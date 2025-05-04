@@ -41,7 +41,7 @@ pub trait CloneStmt<T> {
     fn clone_box(&self) -> Box<dyn Stmt<T>>;
 }
 
-pub trait Stmt<T>: Downcast + CloneStmt<T> {
+pub trait Stmt<T>: Downcast + CloneStmt<T> + Send + Sync + 'static {
     fn accept(&self, visitor: &mut dyn StmtVisitor<T>) -> T;
 }
 

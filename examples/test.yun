@@ -1,0 +1,23 @@
+class Person {
+    init(name) {
+        self.name = name;
+    }
+
+    say(message) {
+        print message;
+    }
+}
+
+class Worker < Person {
+    init(name) {
+        super.init(name);
+    }
+
+    work() {
+        print self.name + " is working...";
+    }
+}
+
+let worker = Worker("Jakob");
+worker.say("Hello");
+worker.work();

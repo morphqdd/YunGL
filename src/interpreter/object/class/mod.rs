@@ -5,13 +5,13 @@ use crate::rc;
 use crate::utils::next_id;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Class {
     id: u64,
-    name: Rc<String>,
-    methods: Rc<HashMap<String, Object>>,
+    name: Arc<String>,
+    methods: Arc<HashMap<String, Object>>,
     superclass: Option<Object>,
 }
 

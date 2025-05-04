@@ -6,30 +6,29 @@ use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::interpreter::scanner::token::Token;
 use crate::interpreter::Interpreter;
 use crate::rc;
-use std::cell::RefCell;
 use std::fmt::{Debug, Display, Formatter};
-use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
-type CallFn = Rc<dyn Fn(&mut Interpreter, Vec<Object>) -> Result<Object>>;
+type CallFn = Arc<dyn Fn(&mut Interpreter, Vec<Object>) -> Result<Object> + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct Callable {
     id: u64,
-    declaration: Option<Rc<RefCell<Fun<Result<Object>>>>>,
-    closure: Option<Rc<RefCell<Environment>>>,
+    declaration: Option<Arc<RwLock<Fun<Result<Object>>>>>,
+    closure: Option<Arc<RwLock<Environment>>>,
     call: CallFn,
-    arity: Rc<dyn Fn() -> usize>,
-    to_string: Rc<dyn Fn() -> String>,
+    arity: Arc<dyn Fn() -> usize + Send + Sync + 'static>,
+    to_string: Arc<dyn Fn() -> String + Send + Sync + 'static>,
     is_init: bool,
 }
 
 impl Callable {
     pub fn new(
-        declaration: Option<Rc<RefCell<Fun<Result<Object>>>>>,
-        closure: Option<Rc<RefCell<Environment>>>,
+        declaration: Option<Arc<RwLock<Fun<Result<Object>>>>>,
+        closure: Option<Arc<RwLock<Environment>>>,
         is_init: bool,
     ) -> Self {
-        let (id, name, params, body) = declaration.clone().unwrap().borrow().clone().extract();
+        let (id, name, params, body) = declaration.clone().unwrap().read().unwrap().clone().extract();
         let arity = params.len();
         let lexeme = name.get_lexeme().to_string();
         Self {
@@ -44,7 +43,7 @@ impl Callable {
                     env.define(params[i].get_lexeme(), Some(args[i].clone()));
                 }
 
-                let closure = Rc::new(RefCell::new(env));
+                let closure = Arc::new(RwLock::new(env));
 
                 match interpreter
                     .execute_block(body.iter().map(AsRef::as_ref).collect(), closure.clone())
@@ -93,11 +92,11 @@ impl Callable {
 
     pub fn build(
         id: u64,
-        declaration: Option<Rc<RefCell<Fun<Result<Object>>>>>,
-        closure: Option<Rc<RefCell<Environment>>>,
+        declaration: Option<Arc<RwLock<Fun<Result<Object>>>>>,
+        closure: Option<Arc<RwLock<Environment>>>,
         call: CallFn,
-        arity: Rc<dyn Fn() -> usize>,
-        to_string: Rc<dyn Fn() -> String>,
+        arity: Arc<dyn Fn() -> usize + Send + Sync + 'static>,
+        to_string: Arc<dyn Fn() -> String + Send + Sync + 'static>,
         is_init: bool,
     ) -> Self {
         Self {
@@ -122,11 +121,11 @@ impl Callable {
     pub fn get_string(&self) -> String {
         (self.to_string)()
     }
-    pub fn get_closure(&self) -> Option<Rc<RefCell<Environment>>> {
+    pub fn get_closure(&self) -> Option<Arc<RwLock<Environment>>> {
         self.closure.clone()
     }
 
-    pub fn get_declaration(&self) -> Option<Rc<RefCell<Fun<Result<Object>>>>> {
+    pub fn get_declaration(&self) -> Option<Arc<RwLock<Fun<Result<Object>>>>> {
         self.declaration.clone()
     }
 

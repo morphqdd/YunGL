@@ -43,7 +43,7 @@ pub trait ExprVisitor<T> {
     fn visit_list(&mut self, list: &List<T>) -> T;
 }
 
-pub trait Expr<T>: Downcast + CloneExpr<T> {
+pub trait Expr<T>: Downcast + CloneExpr<T> + Send + Sync + 'static {
     fn accept(&self, visitor: &mut dyn ExprVisitor<T>) -> T;
     fn id(&self) -> u64;
 }

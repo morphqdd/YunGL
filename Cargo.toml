@@ -10,3 +10,4 @@ name = "yun_gl_lib"
 clap = { version = "4.5.30", features = ["derive"] }
 thiserror = "2.0.11"
 downcast-rs = "2.0.1"
+glium = {version = "0.36.0", features = ["winit"]}

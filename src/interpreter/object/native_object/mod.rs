@@ -23,7 +23,7 @@ impl Native for Instant {
     }
 }
 
-pub trait Native: Debug + Downcast {
+pub trait Native: Debug + Downcast + Send + Sync + 'static {
     fn clone_box(&self) -> Box<dyn Native>;
 }
 

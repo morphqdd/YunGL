@@ -46,22 +46,24 @@ use crate::{b, rc};
 use object::callable::Callable;
 use object::native_object::NativeObject;
 use object::Object;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Write;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::exit;
-use std::rc::Rc;
 use std::time::Instant;
 use std::{fs, io};
+use std::sync::{Arc, RwLock};
+use glium::backend::glutin::SimpleWindowBuilder;
+use glium::winit::event_loop::{EventLoopBuilder};
+use crate::interpreter::app::Application;
 use crate::interpreter::ast::expr::list::List;
 use crate::interpreter::ast::expr::superclass::Super;
-
+pub mod app;
 pub struct Interpreter {
     path: PathBuf,
-    env: Option<Rc<RefCell<Environment>>>,
-    globals: Option<Rc<RefCell<Environment>>>,
+    env: Option<Arc<RwLock<Environment>>>,
+    globals: Option<Arc<RwLock<Environment>>>,
     locals: HashMap<u64, usize>,
 }
 
@@ -194,7 +196,7 @@ impl Default for Interpreter {
             ))),
         );
 
-        let globals = Rc::new(RefCell::new(globals));
+        let globals = Arc::new(RwLock::new(globals));
 
         Self {
             path: PathBuf::new(),
@@ -207,26 +209,36 @@ impl Default for Interpreter {
 
 impl Interpreter {
     pub fn run_shell(mut self) -> Result<()> {
-        let mut shell = Shell::new();
-        let shell_ref = shell.as_mut();
-        loop {
-            print!("@> ");
-            io::stdout().flush().unwrap();
-            let mut buf_line = String::new();
-            if let Err(err) = io::stdin().read_line(&mut buf_line) {
-                print!("{}", err);
-            }
+        std::thread::spawn(move || {
+            let mut shell = Shell::new();
+            let shell_ref = shell.as_mut();
+            loop {
+                print!("@> ");
+                io::stdout().flush().unwrap();
+                let mut buf_line = String::new();
+                if let Err(err) = io::stdin().read_line(&mut buf_line) {
+                    print!("{}", err);
+                }
 
-            shell_ref.set_command(buf_line.trim().to_string());
+                shell_ref.set_command(buf_line.trim().to_string());
 
-            match self.run(shell_ref.get_command()) {
-                Ok(res) => match res {
-                    Object::Void => {}
-                    _ => println!("{}", res),
-                },
-                Err(err) => print!("{}", err),
+                match self.run(shell_ref.get_command()) {
+                    Ok(res) => match res {
+                        Object::Nil => {}
+                        _ => println!("{}", res),
+                    },
+                    Err(err) => print!("{}", err),
+                }
             }
-        }
+        });
+
+        let event_loop = EventLoopBuilder::default().build().unwrap();
+        let (window, display) = SimpleWindowBuilder::new()
+            .with_title("YunGL")
+            .build(&event_loop);
+        event_loop.run_app(&mut Application::new()).unwrap();
+
+        Ok(())
     }
 
     pub fn run_script(mut self, path: &Path) -> Result<()> {
@@ -248,7 +260,6 @@ impl Interpreter {
     fn run(&mut self, code: &str) -> Result<Object> {
         let mut scanner = Scanner::new(code);
         let tokens = scanner.scan_tokens()?;
-        //println!("{:#?}", tokens);
 
         let mut parser = Parser::new(tokens);
         let ast = parser.parse()?;
@@ -273,7 +284,7 @@ impl Interpreter {
     fn execute_block(
         &mut self,
         statements: Vec<&dyn Stmt<Result<Object>>>,
-        environment: Rc<RefCell<Environment>>,
+        environment: Arc<RwLock<Environment>>,
     ) -> Result<Object> {
         let previous = self.env.replace(environment);
         for stmt in statements {
@@ -306,7 +317,7 @@ impl Interpreter {
             Environment::get_at(self.env.clone(), *distance, &name)
         } else {
             if let Some(globals) = self.globals.clone() {
-                return globals.borrow().get(&name);
+                return globals.read().unwrap().get(&name);
             }
             Err(RuntimeError::new(name, RuntimeErrorType::BugEnvironmentNotInit).into())
         }
@@ -437,7 +448,7 @@ impl ExprVisitor<Result<Object>> for Interpreter {
             Environment::assign_at(self.env.clone(), *distance, &name, value)
         } else {
             if let Some(globals) = self.globals.clone() {
-                return globals.borrow_mut().assign(&name, value);
+                return globals.write().unwrap().assign(&name, value);
             }
             Err(RuntimeError::new(name, RuntimeErrorType::BugEnvironmentNotInit).into())
         }
@@ -563,7 +574,7 @@ impl StmtVisitor<Result<Object>> for Interpreter {
                         .into());
                     }
                     Some(env) => {
-                        env.borrow_mut()
+                        env.write().unwrap()
                             .define(stmt.get_ident().get_lexeme(), Some(value));
                     }
                 }
@@ -577,7 +588,7 @@ impl StmtVisitor<Result<Object>> for Interpreter {
                     .into());
                 }
                 Some(env) => {
-                    env.borrow_mut().define(stmt.get_ident().get_lexeme(), None);
+                    env.write().unwrap().define(stmt.get_ident().get_lexeme(), None);
                 }
             },
         }
@@ -587,7 +598,7 @@ impl StmtVisitor<Result<Object>> for Interpreter {
     fn visit_block(&mut self, stmt: &Block<Result<Object>>) -> Result<Object> {
         self.execute_block(
             stmt.get_stmts(),
-            Rc::new(RefCell::new(Environment::new(self.env.clone()))),
+            Arc::new(RwLock::new(Environment::new(self.env.clone()))),
         )?;
         Ok(Object::Nil)
     }
@@ -624,7 +635,7 @@ impl StmtVisitor<Result<Object>> for Interpreter {
                 );
             }
             Some(env) => {
-                env.borrow_mut().define(name.get_lexeme(), Some(func));
+                env.write().unwrap().define(name.get_lexeme(), Some(func));
             }
         }
 
@@ -646,9 +657,9 @@ impl StmtVisitor<Result<Object>> for Interpreter {
             
 
             let superclass = if let Some(superclass) = superclass {
-                if let Object::Rc(rc) =  self.evaluate(superclass)? {
+                if let Object::Arc(rc) =  self.evaluate(superclass)? {
                     if let Object::Class(_) = rc.deref() {
-                        Some(Object::Rc(rc))
+                        Some(Object::Arc(rc))
                     } else {
                         return Err(RuntimeError::new(
                             superclass.get_token(),
@@ -669,11 +680,11 @@ impl StmtVisitor<Result<Object>> for Interpreter {
             };
             
             if let Some(superclass) = superclass.clone() {
-                self.env = Some(Rc::new(RefCell::new(Environment::new(self.env.clone()))));
-                self.env.clone().unwrap().borrow_mut().define("super", Some(superclass));
+                self.env = Some(Arc::new(RwLock::new(Environment::new(self.env.clone()))));
+                self.env.clone().unwrap().write().unwrap().define("super", Some(superclass));
             }
 
-            env.borrow_mut().define(name.get_lexeme(), None);
+            env.write().unwrap().define(name.get_lexeme(), None);
             
             let mut methods_ = HashMap::with_capacity(methods.len());
 
@@ -690,10 +701,10 @@ impl StmtVisitor<Result<Object>> for Interpreter {
             let class = Object::class(name.get_lexeme(), methods_, superclass.clone());
 
             if superclass.is_some() {
-                self.env = self.env.clone().unwrap().borrow().get_enclosing();
+                self.env = self.env.clone().unwrap().read().unwrap().get_enclosing();
             }
 
-            env.borrow_mut().assign(name, Object::Rc(rc!(class)))?;
+            env.write().unwrap().assign(name, Object::Arc(rc!(class)))?;
             return Ok(Object::Nil);
         }
         Err(RuntimeError::new(name.clone(), RuntimeErrorType::BugEnvironmentNotInit).into())

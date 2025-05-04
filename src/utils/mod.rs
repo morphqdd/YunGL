@@ -16,6 +16,6 @@ macro_rules! b {
 #[macro_export]
 macro_rules! rc {
     ($e: expr) => {
-        Rc::new($e)
+        Arc::new($e)
     };
 }

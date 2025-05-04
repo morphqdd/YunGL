@@ -2,14 +2,13 @@ use crate::interpreter::error::Result;
 use crate::interpreter::error::{RuntimeError, RuntimeErrorType};
 use crate::interpreter::object::Object;
 use crate::interpreter::scanner::token::Token;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug)]
 pub struct Environment {
     values: HashMap<String, Option<Object>>,
-    enclosing: Option<Rc<RefCell<Environment>>>,
+    enclosing: Option<Arc<RwLock<Environment>>>,
 }
 
 impl Default for Environment {
@@ -19,7 +18,7 @@ impl Default for Environment {
 }
 
 impl Environment {
-    pub fn new(enclosing: Option<Rc<RefCell<Environment>>>) -> Self {
+    pub fn new(enclosing: Option<Arc<RwLock<Environment>>>) -> Self {
         Self {
             values: Default::default(),
             enclosing,
@@ -43,7 +42,7 @@ impl Environment {
         }
 
         if let Some(enclosing) = self.enclosing.clone() {
-            return enclosing.clone().borrow().get(name);
+            return enclosing.clone().read().unwrap().get(name);
         }
 
         Err(RuntimeError::new(
@@ -53,21 +52,21 @@ impl Environment {
         .into())
     }
 
-    pub fn get_at(env: Option<Rc<RefCell<Self>>>, distance: usize, name: &Token) -> Result<Object> {
+    pub fn get_at(env: Option<Arc<RwLock<Self>>>, distance: usize, name: &Token) -> Result<Object> {
         if let Some(environment) = Environment::ancestor(env, distance) {
-            return environment.borrow().get(name);
+            return environment.read().unwrap().get(name);
         }
         Err(RuntimeError::new(name.clone(), RuntimeErrorType::BugEnvironmentNotInit).into())
     }
 
     fn ancestor(
-        env: Option<Rc<RefCell<Self>>>,
+        env: Option<Arc<RwLock<Self>>>,
         distance: usize,
-    ) -> Option<Rc<RefCell<Environment>>> {
+    ) -> Option<Arc<RwLock<Environment>>> {
         let mut env = env.clone();
         for _ in 0..distance {
             if let Some(env_) = env.clone() {
-                env = env_.borrow().enclosing.clone();
+                env = env_.read().unwrap().enclosing.clone();
             }
         }
         env
@@ -81,7 +80,7 @@ impl Environment {
         }
 
         if let Some(enclosing) = self.enclosing.clone() {
-            return enclosing.borrow_mut().assign(name, value);
+            return enclosing.write().unwrap().assign(name, value);
         }
 
         Err(RuntimeError::new(
@@ -92,14 +91,14 @@ impl Environment {
     }
 
     pub fn assign_at(
-        env: Option<Rc<RefCell<Self>>>,
+        env: Option<Arc<RwLock<Self>>>,
         distance: usize,
         name: &Token,
         value: Object,
     ) -> Result<Object> {
         if let Some(environment) = Environment::ancestor(env, distance) {
             environment
-                .borrow_mut()
+                .write().unwrap()
                 .values
                 .insert(name.get_lexeme().to_string(), Some(value.clone()));
             return Ok(value);
@@ -107,7 +106,7 @@ impl Environment {
         Err(RuntimeError::new(name.clone(), RuntimeErrorType::BugEnvironmentNotInit).into())
     }
     
-    pub fn get_enclosing(&self) -> Option<Rc<RefCell<Environment>>> {
+    pub fn get_enclosing(&self) -> Option<Arc<RwLock<Environment>>> {
         self.enclosing.clone()
     }
 }

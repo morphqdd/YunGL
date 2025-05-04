@@ -1,7 +1,7 @@
 use crate::cli::Cli;
 use clap::Parser;
-use yun_lib::interpreter::error::Result;
-use yun_lib::interpreter::Interpreter;
+use yun_gl_lib::interpreter::error::Result;
+use yun_gl_lib::interpreter::Interpreter;
 
 mod cli;
 #[cfg(test)]
