@@ -6,6 +6,7 @@ use crate::interpreter::scanner::error::{ScannerError, ScannerErrorType};
 use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::interpreter::scanner::token::Token;
 use std::collections::HashMap;
+use downcast_rs::Downcast;
 
 pub mod error;
 
@@ -49,6 +50,11 @@ impl Scanner {
         keywords.insert("use".into(), TokenType::Use);
         keywords.insert("export".into(), TokenType::Export);
 
+        keywords.insert("shader".into(), TokenType::Shader);
+        keywords.insert("pipeline".into(), TokenType::Pipeline);
+        keywords.insert("buffer".into(), TokenType::Buffer);
+        keywords.insert("render".into(), TokenType::Render);
+
         Self {
             source: source.into(),
             tokens: vec![],
@@ -89,6 +95,7 @@ impl Scanner {
             '{' => self.add_token(TokenType::LeftBrace, None),
             '}' => self.add_token(TokenType::RightBrace, None),
             ',' => self.add_token(TokenType::Comma, None),
+            ':' => self.add_token(TokenType::Colon, None),
             '.' => self.add_token(TokenType::Dot, None),
             '-' => self.add_token(TokenType::Minus, None),
             '+' => self.add_token(TokenType::Plus, None),
@@ -111,7 +118,7 @@ impl Scanner {
             ' ' | '\r' | '\t' => {}
             '\n' => {
                 self.line += 1;
-                self.pos_in_line = 0;
+                self.pos_in_line = 1;
             }
             '"' => self.string()?,
             _ => {
@@ -146,7 +153,7 @@ impl Scanner {
             &text,
             lit,
             self.line,
-            self.pos_in_line - text.len(),
+            self.pos_in_line - text.split("\n").nth(0).unwrap().len(),
         ));
     }
 
@@ -172,7 +179,7 @@ impl Scanner {
         while self.peek() != '"' && !self.is_at_end() {
             if self.peek() == '\n' {
                 self.line += 1;
-                self.pos_in_line = 0;
+                self.pos_in_line = 1;
             }
             self.advance();
         }
@@ -219,8 +226,7 @@ impl Scanner {
             Some(Object::Number(
                 self.source[self.start..self.current]
                     .to_string()
-                    .parse()
-                    .unwrap(),
+                    .parse()?,
             )),
         );
         Ok(())

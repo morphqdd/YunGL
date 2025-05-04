@@ -3,11 +3,11 @@ use std::path::PathBuf;
 
 #[derive(Clone, Debug, Parser)]
 pub struct Cli {
-    path: Option<PathBuf>,
+    path: PathBuf,
 }
 
 impl Cli {
-    pub fn get_path(&self) -> Option<&PathBuf> {
-        self.path.as_ref()
+    pub fn get_path(&self) -> &PathBuf {
+        &self.path
     }
 }

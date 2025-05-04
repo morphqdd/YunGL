@@ -208,38 +208,28 @@ impl Default for Interpreter {
 }
 
 impl Interpreter {
-    pub fn run_shell(mut self) -> Result<()> {
-        std::thread::spawn(move || {
-            let mut shell = Shell::new();
-            let shell_ref = shell.as_mut();
-            loop {
-                print!("@> ");
-                io::stdout().flush().unwrap();
-                let mut buf_line = String::new();
-                if let Err(err) = io::stdin().read_line(&mut buf_line) {
-                    print!("{}", err);
-                }
-
-                shell_ref.set_command(buf_line.trim().to_string());
-
-                match self.run(shell_ref.get_command()) {
-                    Ok(res) => match res {
-                        Object::Nil => {}
-                        _ => println!("{}", res),
-                    },
-                    Err(err) => print!("{}", err),
-                }
-            }
-        });
-
-        let event_loop = EventLoopBuilder::default().build().unwrap();
-        let (window, display) = SimpleWindowBuilder::new()
-            .with_title("YunGL")
-            .build(&event_loop);
-        event_loop.run_app(&mut Application::new()).unwrap();
-
-        Ok(())
-    }
+    // pub fn run_shell(mut self) -> Result<()> {
+    //     let mut shell = Shell::new();
+    //     let shell_ref = shell.as_mut();
+    //     loop {
+    //         print!("@> ");
+    //         io::stdout().flush().unwrap();
+    //         let mut buf_line = String::new();
+    //         if let Err(err) = io::stdin().read_line(&mut buf_line) {
+    //             print!("{}", err);
+    //         }
+    //
+    //         shell_ref.set_command(buf_line.trim().to_string());
+    //
+    //         match self.run(shell_ref.get_command()) {
+    //             Ok(res) => match res {
+    //                 Object::Nil => {}
+    //                 _ => println!("{}", res),
+    //             },
+    //             Err(err) => print!("{}", err),
+    //         }
+    //     }
+    // }
 
     pub fn run_script(mut self, path: &Path) -> Result<()> {
         self.path = path.to_path_buf();
@@ -257,20 +247,36 @@ impl Interpreter {
         Ok(())
     }
 
-    fn run(&mut self, code: &str) -> Result<Object> {
-        let mut scanner = Scanner::new(code);
-        let tokens = scanner.scan_tokens()?;
+    fn run(&mut self, code: &str) -> Result<()> {
+        let code = code.to_string();
+        std::thread::spawn(move || -> Result<()> {
 
-        let mut parser = Parser::new(tokens);
-        let ast = parser.parse()?;
+            let mut scanner = Scanner::new(&code);
+            let tokens = scanner.scan_tokens()?;
 
-        let ast = Exporter::new(self.path.clone(), ast).resolve()?;
+            println!("{:#?}", tokens);
 
-        Resolver::new(self).resolve(ast.iter().map(AsRef::as_ref).collect())?;
+            Ok(())
 
-        let res = self.interpret(ast)?;
+            // let mut parser = Parser::new(tokens);
+            // let ast = parser.parse()?;
+            //
+            // let ast = Exporter::new(self.path.clone(), ast).resolve()?;
+            //
+            // Resolver::new(self).resolve(ast.iter().map(AsRef::as_ref).collect())?;
+            //
+            // let res = self.interpret(ast)?;
+            //
+            // Ok(res)
+        });
 
-        Ok(res)
+        let event_loop = EventLoopBuilder::default().build().unwrap();
+        let (window, display) = SimpleWindowBuilder::new()
+            .with_title("YunGL")
+            .build(&event_loop);
+        event_loop.run_app(&mut Application::new()).unwrap();
+
+        Ok(())
     }
 
     fn interpret(&mut self, statements: Vec<Box<dyn Stmt<Result<Object>>>>) -> Result<Object> {

@@ -50,4 +50,10 @@ pub enum TokenType {
     Export,
     LeftBracket,
     RightBracket,
+
+    //YunGL
+    Shader, Pipeline, Buffer, Render, Vertex, Fragment,
+    Attributes, Primitive, Layout, Data, Source,
+
+    Colon,
 }
