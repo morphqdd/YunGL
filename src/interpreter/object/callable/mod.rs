@@ -7,6 +7,7 @@ use crate::interpreter::scanner::token::Token;
 use crate::interpreter::Interpreter;
 use crate::rc;
 use std::fmt::{Debug, Display, Formatter};
+use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 
 type CallFn = Arc<dyn Fn(&mut Interpreter, Vec<Object>) -> Result<Object> + Send + Sync + 'static>;
@@ -149,5 +150,13 @@ impl Display for Callable {
 impl PartialEq for Callable {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
+    }
+}
+
+impl Eq for Callable {}
+
+impl Hash for Callable {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state)
     }
 }

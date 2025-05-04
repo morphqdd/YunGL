@@ -29,7 +29,9 @@ use crate::interpreter::parser::error::{ParserError, ParserErrorType};
 use crate::interpreter::scanner::token::Token;
 use crate::interpreter::Interpreter;
 use std::collections::HashMap;
+use std::ops::Deref;
 use crate::interpreter::ast::expr::list::List;
+use crate::interpreter::ast::expr::object::Obj;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum FunctionType {
@@ -238,6 +240,18 @@ impl ExprVisitor<Result<Object>> for Resolver<'_> {
         for value in values {
             self.resolve_expr(value)?;
         }
+        Ok(Object::Nil)
+    }
+
+    fn visit_object(&mut self, object: &Obj<Result<Object>>) -> Result<Object> {
+        let values = object.extract();
+        self.begin_scope();
+        for (key, value) in values.clone() {
+            self.declare(&key);
+            self.resolve_expr(value.deref())?;
+            self.define(&key);
+        }
+        self.end_scope();
         Ok(Object::Nil)
     }
 }

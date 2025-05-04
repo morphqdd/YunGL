@@ -5,9 +5,11 @@ use crate::rc;
 use crate::utils::next_id;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::hash::{Hash, Hasher};
+use std::ops::Deref;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Class {
     id: u64,
     name: Arc<String>,
@@ -86,5 +88,17 @@ impl From<Class> for Callable {
             rc!(move || name.to_string()),
             is_init,
         )
+    }
+}
+
+impl Hash for Class {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.name.hash(state);
+        self.methods.deref().clone().iter().for_each(|(key, value)| {
+            key.hash(state);
+            value.hash(state);
+        });
+        self.superclass.hash(state);
     }
 }

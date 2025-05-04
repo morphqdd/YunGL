@@ -9,8 +9,10 @@ use crate::interpreter::object::native_object::NativeObject;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
+use std::hash::{Hash, Hasher};
 use std::ops::{Add, Deref, Div, Mul, Neg, Not, Sub};
 use std::sync::{Arc, RwLock};
+use ordered_float::OrderedFloat;
 use crate::b;
 
 pub mod callable;
@@ -18,7 +20,7 @@ pub mod class;
 pub mod instance;
 pub mod native_object;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, )]
 pub enum Object {
     String(String),
     Number(f64),
@@ -31,6 +33,35 @@ pub enum Object {
     Nil,
     Void,
     List(Vec<Object>),
+    Dictionary(HashMap<String, Object>),
+}
+
+impl Eq for Object {}
+
+impl Hash for Object {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        use Object::*;
+        std::mem::discriminant(self).hash(state);
+        match self {
+            String(s) => s.hash(state),
+            Number(n) => OrderedFloat(*n).hash(state),
+            Bool(b) => b.hash(state),
+            Callable(c) => c.hash(state),
+            Class(c) => c.hash(state),
+            Instance(i) => i.hash(state),
+            NativeObject(n) => n.hash(state),
+            Arc(o) => o.hash(state),
+            Nil => {} // ничего не нужно
+            Void => {}
+            List(vec) => vec.hash(state),
+            Dictionary(map) => {
+                for (k, v) in map {
+                    k.hash(state);
+                    v.hash(state);
+                }
+            }
+        }
+    }
 }
 
 impl Object {
@@ -47,6 +78,7 @@ impl Object {
             Object::NativeObject(_) => "<native object>".into(),
             Object::Arc(obj) => obj.get_type(),
             Object::List(_) => "list".into(),
+            Object::Dictionary(_) => "dictionary".into(),
         }
     }
 
@@ -246,6 +278,9 @@ impl Display for Object {
                     _ => obj.to_string(),
                 }
             ).collect::<Vec<_>>().join(", ")),
+            Object::Dictionary(obj) => write!(f, "{{{}}}", obj.iter().map(
+                |(key, obj)| format!("{}: {}", key, obj)
+            ).collect::<Vec<_>>().join(", "))
         }
     }
 }

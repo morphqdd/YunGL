@@ -5,6 +5,7 @@ use crate::interpreter::object::Object;
 use crate::interpreter::scanner::token::Token;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone)]
@@ -52,6 +53,20 @@ impl Display for Instance {
 
 impl PartialEq for Instance {
     fn eq(&self, other: &Self) -> bool {
-        self.class == other.class && self.fields.read().unwrap().eq(&other.fields.read().unwrap())
+        self.class == other.class
+            && self.fields.read().unwrap().eq(&other.fields.read().unwrap())
+    }
+}
+
+impl Eq for Instance {}
+
+impl Hash for Instance {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.class.hash(state);
+        let fields = self.fields.read().unwrap();
+        for (k, v) in fields.iter() {
+            k.hash(state);
+            v.hash(state);
+        }
     }
 }

@@ -58,6 +58,7 @@ use glium::backend::glutin::SimpleWindowBuilder;
 use glium::winit::event_loop::{EventLoopBuilder};
 use crate::interpreter::app::Application;
 use crate::interpreter::ast::expr::list::List;
+use crate::interpreter::ast::expr::object::Obj;
 use crate::interpreter::ast::expr::superclass::Super;
 pub mod app;
 pub struct Interpreter {
@@ -247,33 +248,37 @@ impl Interpreter {
         Ok(())
     }
 
-    fn run(&mut self, code: &str) -> Result<()> {
+    fn run(mut self, code: &str) -> Result<()> {
         let code = code.to_string();
-        std::thread::spawn(move || -> Result<()> {
+        let thread = std::thread::spawn(move || -> Result<()> {
 
             let mut scanner = Scanner::new(&code);
             let tokens = scanner.scan_tokens()?;
 
             println!("{:#?}", tokens);
 
-            Ok(())
+            let mut parser: Parser<Result<Object>> = Parser::new(tokens);
+            let ast = parser.parse()?;
 
-            // let mut parser = Parser::new(tokens);
-            // let ast = parser.parse()?;
-            //
-            // let ast = Exporter::new(self.path.clone(), ast).resolve()?;
-            //
-            // Resolver::new(self).resolve(ast.iter().map(AsRef::as_ref).collect())?;
-            //
-            // let res = self.interpret(ast)?;
-            //
-            // Ok(res)
+            println!("Parsed...");
+
+            let ast = Exporter::new(self.path.clone(), ast).resolve()?;
+
+            Resolver::new(&mut self).resolve(ast.iter().map(AsRef::as_ref).collect())?;
+
+            let res = self.interpret(ast)?;
+
+            println!("{res}");
+            Ok(())
         });
 
         let event_loop = EventLoopBuilder::default().build().unwrap();
         let (window, display) = SimpleWindowBuilder::new()
             .with_title("YunGL")
             .build(&event_loop);
+
+
+
         event_loop.run_app(&mut Application::new()).unwrap();
 
         Ok(())
@@ -552,6 +557,15 @@ impl ExprVisitor<Result<Object>> for Interpreter {
             values.push(self.evaluate(val)?);
         }
         Ok(Object::List(values))
+    }
+
+    fn visit_object(&mut self, object: &Obj<Result<Object>>) -> Result<Object> {
+        let values = object.extract();
+        let mut obj = HashMap::new();
+        for (key, value) in values.clone() {
+            obj.insert(key.get_lexeme().to_string(), self.evaluate(value.deref())?);
+        }
+        Ok(Object::Dictionary(obj))
     }
 }
 

@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter};
 
 pub mod token_type;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Token {
     token_type: TokenType,
     lexeme: String,

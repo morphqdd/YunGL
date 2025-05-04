@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::b;
 use crate::interpreter::ast::expr::assignment::Assign;
 use crate::interpreter::ast::expr::binary::Binary;
@@ -31,6 +32,7 @@ use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::interpreter::scanner::token::Token;
 use std::marker::PhantomData;
 use crate::interpreter::ast::expr::list::List;
+use crate::interpreter::ast::expr::object::Obj;
 
 pub mod error;
 pub mod resolver;
@@ -537,9 +539,32 @@ where
             return self.list()
         }
 
+        if self._match(vec![TokenType::LeftBrace]) {
+            return self.obj()
+        }
+
         Err(self
             .error(self.peek(), ParserErrorType::ExpectedExpression)
             .into())
+    }
+
+    fn obj(&mut self) -> Result<Box<dyn Expr<T>>> {
+        let mut values = HashMap::new();
+        if !self.check(TokenType::RightBrace) {
+            let name = self.consume(TokenType::Identifier, ParserErrorType::ExpectedKey)?;
+            self.consume(TokenType::Colon, ParserErrorType::ExpectedColon)?;
+            println!("COLON ");
+            let value = self.expression()?;
+            values.insert(name, value);
+            while self._match(vec![TokenType::Comma]) {
+                let name = self.peek();
+                self.consume(TokenType::Colon, ParserErrorType::ExpectedColon)?;
+                let value = self.expression()?;
+                values.insert(name, value);
+            }
+        }
+        self.consume(TokenType::RightBrace, ParserErrorType::ExpectedRightBrace)?;
+        Ok(b!(Obj::new(values)))
     }
 
     fn list(&mut self) -> Result<Box<dyn Expr<T>>> {
