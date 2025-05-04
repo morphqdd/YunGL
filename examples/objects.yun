@@ -1,5 +1,8 @@
+let b = 10;
 let a = {
-    "key": "value"
+    "key": "value",
+    1: b,
+    second_key: "value"
 };
 
 print a;

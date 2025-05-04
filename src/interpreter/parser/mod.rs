@@ -557,11 +557,14 @@ where
                 return Err(ParserError::new(self.peek(), ParserErrorType::ExpectedKey).into())
             };
             self.consume(TokenType::Colon, ParserErrorType::ExpectedColon)?;
-            println!("COLON ");
             let value = self.expression()?;
             values.insert(name, value);
             while self._match(vec![TokenType::Comma]) {
-                let name = self.peek();
+                let name = if self._match(vec![TokenType::Identifier, TokenType::Number, TokenType::String]) {
+                    self.previous()
+                }else {
+                    return Err(ParserError::new(self.peek(), ParserErrorType::ExpectedKey).into())
+                };
                 self.consume(TokenType::Colon, ParserErrorType::ExpectedColon)?;
                 let value = self.expression()?;
                 values.insert(name, value);

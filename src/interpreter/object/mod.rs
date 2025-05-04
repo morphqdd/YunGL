@@ -279,7 +279,10 @@ impl Display for Object {
                 }
             ).collect::<Vec<_>>().join(", ")),
             Object::Dictionary(obj) => write!(f, "{{{}}}", obj.iter().map(
-                |(key, obj)| format!("{}: {}", key, obj)
+                |(key, obj)|  match obj {
+                    Object::String(str) => format!("{}: {:?}", key, str),
+                    _ => format!("{}: {}", key, obj),
+                }
             ).collect::<Vec<_>>().join(", "))
         }
     }
