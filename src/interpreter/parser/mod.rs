@@ -551,7 +551,11 @@ where
     fn obj(&mut self) -> Result<Box<dyn Expr<T>>> {
         let mut values = HashMap::new();
         if !self.check(TokenType::RightBrace) {
-            let name = self.consume(TokenType::Identifier, ParserErrorType::ExpectedKey)?;
+            let name = if self._match(vec![TokenType::Identifier, TokenType::Number, TokenType::String]) {
+                 self.previous()
+            }else {
+                return Err(ParserError::new(self.peek(), ParserErrorType::ExpectedKey).into())
+            };
             self.consume(TokenType::Colon, ParserErrorType::ExpectedColon)?;
             println!("COLON ");
             let value = self.expression()?;

@@ -249,35 +249,27 @@ impl Interpreter {
     }
 
     fn run(mut self, code: &str) -> Result<()> {
-        let code = code.to_string();
-        let thread = std::thread::spawn(move || -> Result<()> {
 
-            let mut scanner = Scanner::new(&code);
-            let tokens = scanner.scan_tokens()?;
+        let mut scanner = Scanner::new(code);
+        let tokens = scanner.scan_tokens()?;
 
-            println!("{:#?}", tokens);
+        //println!("{:#?}", tokens);
 
-            let mut parser: Parser<Result<Object>> = Parser::new(tokens);
-            let ast = parser.parse()?;
+        let mut parser: Parser<Result<Object>> = Parser::new(tokens);
+        let ast = parser.parse()?;
 
-            println!("Parsed...");
+        //println!("Parsed...");
 
-            let ast = Exporter::new(self.path.clone(), ast).resolve()?;
+        let ast = Exporter::new(self.path.clone(), ast).resolve()?;
 
-            Resolver::new(&mut self).resolve(ast.iter().map(AsRef::as_ref).collect())?;
+        Resolver::new(&mut self).resolve(ast.iter().map(AsRef::as_ref).collect())?;
 
-            let res = self.interpret(ast)?;
-
-            println!("{res}");
-            Ok(())
-        });
+        let res = self.interpret(ast)?;
 
         let event_loop = EventLoopBuilder::default().build().unwrap();
         let (window, display) = SimpleWindowBuilder::new()
             .with_title("YunGL")
             .build(&event_loop);
-
-
 
         event_loop.run_app(&mut Application::new()).unwrap();
 

@@ -1,5 +1,5 @@
 let a = {
-    key: "value"
+    "key": "value"
 };
 
 print a;
