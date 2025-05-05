@@ -4,5 +4,5 @@ use crate::interpreter::object::Object;
 pub enum InterpreterEvent {
     Render(Object),
     #[default]
-    None
+    None,
 }

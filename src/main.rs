@@ -12,8 +12,7 @@ mod test;
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let event_loop = EventLoopBuilder::<InterpreterEvent>::default()
-        .build()?;
+    let event_loop = EventLoopBuilder::<InterpreterEvent>::default().build()?;
 
     let (window, display) = SimpleWindowBuilder::new()
         .with_title("App")

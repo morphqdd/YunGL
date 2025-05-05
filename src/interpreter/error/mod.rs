@@ -1,16 +1,16 @@
 use crate::interpreter::Interpreter;
+use crate::interpreter::event::InterpreterEvent;
 use crate::interpreter::exporter::error::ExporterError;
 use crate::interpreter::object::Object;
 use crate::interpreter::parser::error::ParserError;
 use crate::interpreter::scanner::error::ScannerError;
 use crate::interpreter::scanner::token::Token;
 use glium::winit::error::EventLoopError;
+use glium::winit::event_loop::EventLoopClosed;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::num::ParseFloatError;
-use glium::winit::event_loop::EventLoopClosed;
 use thiserror::Error;
-use crate::interpreter::event::InterpreterEvent;
 
 pub type Result<T> = std::result::Result<T, InterpreterError>;
 

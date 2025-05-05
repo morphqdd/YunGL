@@ -1,9 +1,11 @@
 pub mod ast;
 pub mod environment;
 pub mod error;
+pub mod event;
 pub mod exporter;
 pub mod object;
 pub mod parser;
+pub mod render_statement;
 pub mod scanner;
 pub mod shell;
 
@@ -37,22 +39,28 @@ use crate::interpreter::ast::stmt::{Stmt, StmtVisitor};
 use crate::interpreter::environment::Environment;
 use crate::interpreter::error::Result;
 use crate::interpreter::error::{InterpreterError, RuntimeError, RuntimeErrorType};
+use crate::interpreter::event::InterpreterEvent;
 use crate::interpreter::exporter::Exporter;
 use crate::interpreter::parser::Parser;
 use crate::interpreter::parser::resolver::Resolver;
+use crate::interpreter::render_statement::RenderStatement;
+use crate::interpreter::render_statement::buffers_data::BuffersData;
+use crate::interpreter::render_statement::pipeline_data::PipelineData;
 use crate::interpreter::scanner::Scanner;
 use crate::interpreter::scanner::token::Token;
 use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::interpreter::shell::Shell;
 use crate::utils::next_id;
 use crate::{b, rc};
-use glium::Display;
 use glium::backend::glutin::SimpleWindowBuilder;
 use glium::glutin::surface::WindowSurface;
+use glium::index::{NoIndices, PrimitiveType};
+use glium::uniforms::EmptyUniforms;
 use glium::winit::application::ApplicationHandler;
 use glium::winit::event::{Event, StartCause, WindowEvent};
 use glium::winit::event_loop::{ActiveEventLoop, EventLoopBuilder, EventLoopProxy};
 use glium::winit::window::{Window, WindowId};
+use glium::{Display, Surface};
 use object::Object;
 use object::callable::Callable;
 use object::native_object::NativeObject;
@@ -64,14 +72,12 @@ use std::process::exit;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use std::{fs, io};
-use crate::interpreter::event::InterpreterEvent;
-
-pub mod event;
 
 pub struct Interpreter {
     window: Window,
     display: Display<WindowSurface>,
     proxy: EventLoopProxy<InterpreterEvent>,
+    render_statement: Option<RenderStatement>,
     path: PathBuf,
     env: Option<Arc<RwLock<Environment>>>,
     globals: Option<Arc<RwLock<Environment>>>,
@@ -79,7 +85,12 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
-    pub fn new(window: Window, display: Display<WindowSurface>, proxy: EventLoopProxy<InterpreterEvent>, path: PathBuf) -> Self {
+    pub fn new(
+        window: Window,
+        display: Display<WindowSurface>,
+        proxy: EventLoopProxy<InterpreterEvent>,
+        path: PathBuf,
+    ) -> Self {
         let mut globals = Environment::default();
 
         globals.define(
@@ -89,7 +100,9 @@ impl Interpreter {
                 None,
                 None,
                 rc!(|interpreter, args| {
-                    interpreter.proxy.send_event(InterpreterEvent::Render(args[0].clone()))?;
+                    interpreter
+                        .proxy
+                        .send_event(InterpreterEvent::Render(args[0].clone()))?;
                     Ok(Object::Nil)
                 }),
                 rc!(|| 1),
@@ -229,6 +242,7 @@ impl Interpreter {
             window,
             display,
             proxy,
+            render_statement: None,
             path,
             env: Some(globals.clone()),
             globals: Some(globals),
@@ -395,7 +409,79 @@ impl ApplicationHandler<InterpreterEvent> for Interpreter {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: InterpreterEvent) {
         match event {
             InterpreterEvent::Render(object) => {
+                println!("{:?}", object);
+                let Object::List(list) = object else {
+                    return;
+                };
+                for elm in list {
+                    let pipeline = elm.get_field(Object::Number(0.0)).unwrap();
+                    let vertex = elm.get_field(Object::Number(1.0)).unwrap();
+                    let Object::Dictionary(attributes) = pipeline
+                        .get_field(Object::String("attributes".into()))
+                        .unwrap_or(Object::Dictionary(HashMap::new()))
+                    else {
+                        return;
+                    };
 
+                    let Object::List(data) = vertex
+                        .get_field(Object::String("data".into()))
+                        .unwrap_or(Object::Dictionary(HashMap::new()))
+                    else {
+                        return;
+                    };
+
+                    let data = data
+                        .into_iter()
+                        .map(|obj| {
+                            let Object::Dictionary(fields) = obj else {
+                                panic!("Expected dictionary");
+                            };
+                            fields
+                                .into_iter()
+                                .map(|(_, obj)| {
+                                    let Object::Number(num) = obj else {
+                                        panic!("Expected number")
+                                    };
+                                    num as f32
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .collect::<Vec<_>>()
+                        .concat();
+
+                    let Object::List(layout) = vertex
+                        .get_field(Object::String("layout".into()))
+                        .unwrap_or(Object::Dictionary(HashMap::new()))
+                    else {
+                        return;
+                    };
+
+                    let layout = layout
+                        .into_iter()
+                        .map(|obj| {
+                            let Object::String(string) = obj else {
+                                panic!("Expected string")
+                            };
+                            string
+                        })
+                        .collect::<Vec<_>>();
+
+                    let attributes = attributes
+                        .into_iter()
+                        .map(|(k, v)| (k, v.to_string()))
+                        .collect::<HashMap<String, String>>();
+                    let render_statement = RenderStatement::new(
+                        &self.display,
+                        PipelineData { attributes },
+                        BuffersData { data, layout },
+                    )
+                    .unwrap();
+                    println!(
+                        "Vertex: {}\nFragment: {}",
+                        render_statement.vertex_shader, render_statement.fragment_shader
+                    );
+                    self.render_statement = Some(render_statement);
+                }
             }
             InterpreterEvent::None => {}
         }
@@ -410,9 +496,28 @@ impl ApplicationHandler<InterpreterEvent> for Interpreter {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::RedrawRequested => {
-
+                if let Some(render_statement) = &self.render_statement {
+                    let program = render_statement.build_program(&self.display).unwrap();
+                    let mut target = self.display.draw();
+                    target.clear_color(0.0, 0.0, 0.0, 1.0);
+                    target
+                        .draw(
+                            &render_statement.vertex_buffer,
+                            &NoIndices(PrimitiveType::TriangleStrip),
+                            &program,
+                            &EmptyUniforms,
+                            &Default::default(),
+                        )
+                        .unwrap();
+                    target.finish().unwrap();
+                }
             }
             _ => {}
+        }
+    }
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if self.render_statement.is_some() {
+            self.window.request_redraw()
         }
     }
 }

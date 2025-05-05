@@ -1,0 +1,27 @@
+export class Triangle {
+    init() {
+        self.pipeline = {
+            attributes: {
+                position: "vec4"
+            },
+            primitive: "triangles"
+        };
+
+        self.vertices = {
+            data: [
+                { x: 0.6, y: 0.5 },
+                { x: -0.2, y: -0.5 },
+                { x: 0.5, y: -0.5 }
+            ],
+            layout: ["vec2"]
+        };
+    }
+
+    getPipeline() {
+        return self.pipeline;
+    }
+
+    getVertices() {
+        return self.vertices;
+    }
+}

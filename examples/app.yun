@@ -1,0 +1,5 @@
+use "triangle";
+
+let triangle = Triangle();
+
+render([[triangle.getPipeline(), triangle.getVertices()]]);

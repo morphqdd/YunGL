@@ -127,6 +127,20 @@ impl Object {
             _ => self,
         }
     }
+
+    pub fn get_field(&self, key: Object) -> Option<Object> {
+        if let Object::Dictionary(map) = self {
+            let Object::String(key) = key else {
+                return None;
+            };
+            return Some(map.get(&key).unwrap().clone());
+        }
+        if let Object::List(list) = self {
+            let Object::Number(i) = key else { return None };
+            return Some(list[i as usize].clone());
+        }
+        None
+    }
 }
 
 impl Neg for Object {
