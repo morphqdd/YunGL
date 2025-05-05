@@ -1,3 +1,4 @@
+use std::error::Error;
 use crate::interpreter::exporter::error::ExporterError;
 use crate::interpreter::object::Object;
 use crate::interpreter::parser::error::ParserError;
@@ -6,6 +7,7 @@ use crate::interpreter::scanner::token::Token;
 use crate::interpreter::Interpreter;
 use std::fmt::{Display, Formatter};
 use std::num::ParseFloatError;
+use glium::winit::error::EventLoopError;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, InterpreterError>;
@@ -26,6 +28,12 @@ pub enum InterpreterError {
     Custom(String),
     #[error("{0}")]
     Return(Object),
+}
+
+impl From<EventLoopError> for InterpreterError {
+    fn from(value: EventLoopError) -> Self {
+        InterpreterError::Custom(value.to_string())
+    }
 }
 
 impl From<String> for InterpreterError {

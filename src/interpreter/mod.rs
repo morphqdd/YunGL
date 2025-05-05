@@ -55,26 +55,44 @@ use std::time::Instant;
 use std::{fs, io};
 use std::sync::{Arc, RwLock};
 use glium::backend::glutin::SimpleWindowBuilder;
-use glium::winit::event_loop::{EventLoopBuilder};
-use crate::interpreter::app::Application;
+use glium::Display;
+use glium::glutin::surface::WindowSurface;
+use glium::winit::application::ApplicationHandler;
+use glium::winit::event::{StartCause, WindowEvent};
+use glium::winit::event_loop::{ActiveEventLoop, EventLoopBuilder};
+use glium::winit::window::{Window, WindowId};
 use crate::interpreter::ast::expr::list::List;
 use crate::interpreter::ast::expr::object::Obj;
 use crate::interpreter::ast::expr::superclass::Super;
-use crate::interpreter::ast::stmt::buffer::Buffer;
-use crate::interpreter::ast::stmt::pipeline::Pipeline;
-use crate::interpreter::ast::stmt::render::Render;
 
-pub mod app;
 pub struct Interpreter {
+    window: Window,
+    display: Display<WindowSurface>,
     path: PathBuf,
     env: Option<Arc<RwLock<Environment>>>,
     globals: Option<Arc<RwLock<Environment>>>,
     locals: HashMap<u64, usize>,
 }
 
-impl Default for Interpreter {
-    fn default() -> Self {
+impl Interpreter {
+    pub fn new(window: Window, display: Display<WindowSurface>, path: PathBuf) -> Self {
         let mut globals = Environment::default();
+
+        globals.define(
+            "render",
+            Some(Object::Callable(Callable::build(
+                next_id(),
+                None,
+                None,
+                rc!(|interpreter, args| {
+                    println!("{}", args[0]);
+                    Ok(Object::Nil)
+                }),
+                rc!(|| 1),
+                rc!(|| "render".into()),
+                false
+            )))
+        );
 
         globals.define(
             "get",
@@ -204,40 +222,15 @@ impl Default for Interpreter {
         let globals = Arc::new(RwLock::new(globals));
 
         Self {
-            path: PathBuf::new(),
+            window,
+            display,
+            path,
             env: Some(globals.clone()),
             globals: Some(globals),
             locals: Default::default(),
         }
     }
-}
-
-impl Interpreter {
-    // pub fn run_shell(mut self) -> Result<()> {
-    //     let mut shell = Shell::new();
-    //     let shell_ref = shell.as_mut();
-    //     loop {
-    //         print!("@> ");
-    //         io::stdout().flush().unwrap();
-    //         let mut buf_line = String::new();
-    //         if let Err(err) = io::stdin().read_line(&mut buf_line) {
-    //             print!("{}", err);
-    //         }
-    //
-    //         shell_ref.set_command(buf_line.trim().to_string());
-    //
-    //         match self.run(shell_ref.get_command()) {
-    //             Ok(res) => match res {
-    //                 Object::Nil => {}
-    //                 _ => println!("{}", res),
-    //             },
-    //             Err(err) => print!("{}", err),
-    //         }
-    //     }
-    // }
-
-    pub fn run_script(mut self, path: &Path) -> Result<()> {
-        self.path = path.to_path_buf();
+    pub fn run_script(&mut self) -> Result<()> {
         let code = fs::read_to_string(&self.path).unwrap();
         if let Err(err) = self.run(&code) {
             println!("{}", err);
@@ -252,30 +245,19 @@ impl Interpreter {
         Ok(())
     }
 
-    fn run(mut self, code: &str) -> Result<()> {
+    fn run(&mut self, code: &str) -> Result<()> {
 
         let mut scanner = Scanner::new(code);
         let tokens = scanner.scan_tokens()?;
 
-        //println!("{:#?}", tokens);
-
         let mut parser: Parser<Result<Object>> = Parser::new(tokens);
         let ast = parser.parse()?;
 
-        //println!("Parsed...");
-
         let ast = Exporter::new(self.path.clone(), ast).resolve()?;
 
-        Resolver::new(&mut self).resolve(ast.iter().map(AsRef::as_ref).collect())?;
+        Resolver::new(self).resolve(ast.iter().map(AsRef::as_ref).collect())?;
 
         let res = self.interpret(ast)?;
-
-        let event_loop = EventLoopBuilder::default().build().unwrap();
-        let (window, display) = SimpleWindowBuilder::new()
-            .with_title("YunGL")
-            .build(&event_loop);
-
-        event_loop.run_app(&mut Application::new()).unwrap();
 
         Ok(())
     }
@@ -734,48 +716,29 @@ impl StmtVisitor<Result<Object>> for Interpreter {
     fn visit_use(&mut self, _stmt: &Use<Result<Object>>) -> Result<Object> {
         Ok(Object::Nil)
     }
+}
 
-    fn visit_pipeline(&mut self, stmt: &Pipeline<Result<Object>>) -> Result<Object> {
-        let (name, expr) = stmt.extract();
-        if let Some(env) = self.env.clone() {
-            let obj = self.evaluate(expr)?;
-            println!("Pipeline: {}", obj);
-
-            env.write().unwrap().define(name.get_lexeme(), Some(Object::Arc(rc!(obj))));
-            return Ok(Object::Nil);
-        }
-        Err(RuntimeError::new(name.clone(), RuntimeErrorType::BugEnvironmentNotInit).into())
-    }
-
-    fn visit_buffer(&mut self, stmt: &Buffer<Result<Object>>) -> Result<Object> {
-        let (name, expr) = stmt.extract();
-        if let Some(env) = self.env.clone() {
-            let obj = self.evaluate(expr)?;
-            println!("Buffer: {}", obj);
-
-            env.write().unwrap().define(name.get_lexeme(), Some(Object::Arc(rc!(obj))));
-            return Ok(Object::Nil);
-        }
-        Err(RuntimeError::new(name.clone(), RuntimeErrorType::BugEnvironmentNotInit).into())
-    }
-
-    fn visit_render(&mut self, render: &Render<Result<Object>>) -> Result<Object> {
-        let exprs = render.extract();
-        if let Some(env) = self.env.clone() {
-            let mut lists = Vec::new();
-            for expr in exprs {
-                if let Object::List(vec) = self.evaluate(expr)? {
-                    lists.push(Object::List(vec));
+impl ApplicationHandler for Interpreter {
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
+        match cause {
+            StartCause::Init => {
+                if let Err(err) = self.run_script() {
+                    println!("{}", err);
                 }
             }
-            let lists = Object::List(lists);
-            println!("Render: {}", lists);
-
-            env.write().unwrap().define("__render__", Some(Object::Arc(rc!(lists))));
-            return Ok(Object::Nil);
+            _ => {}
         }
-        Err(RuntimeError::new(Token::builtin_void(
-            TokenType::Identifier, "__render__", None
-        ), RuntimeErrorType::BugEnvironmentNotInit).into())
+    }
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
+        match event {
+            WindowEvent::CloseRequested => {
+                event_loop.exit()
+            }
+            _ => {}
+        }
     }
 }

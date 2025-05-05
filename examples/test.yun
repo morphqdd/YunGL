@@ -1,20 +1,27 @@
-pipeline trianglePipeline {
-    attributes: {
-        position: "vec2"
-    },
-    primitive: "triangles"
+class Triangle {
+    init() {
+        self.pl = {
+            attributes: {
+                position: "vec2"
+            },
+            primitive: "triangles"
+        };
+
+        self.vertices = {
+            data: [
+                { x: 0.0, y: 0.5 },
+                { x: -0.5, y: -0.5 },
+                { x: 0.5, y: -0.5 }
+            ],
+            layout: "vec2"
+        };
+    }
 }
 
+let triangle = Triangle();
 
-buffer vertices {
-    data: [
-        { x: 0.0, y: 0.5 },
-        { x: -0.5, y: -0.5 },
-        { x: 0.5, y: -0.5 }
-    ],
-    layout: "vec2"
-}
-
-render {
-    [trianglePipeline, vertices]
-}
+render(
+    [
+        [triangle.pl, triangle.vertices]
+    ]
+);

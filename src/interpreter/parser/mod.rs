@@ -33,9 +33,6 @@ use crate::interpreter::scanner::token::Token;
 use std::marker::PhantomData;
 use crate::interpreter::ast::expr::list::List;
 use crate::interpreter::ast::expr::object::Obj;
-use crate::interpreter::ast::stmt::buffer::Buffer;
-use crate::interpreter::ast::stmt::pipeline::Pipeline;
-use crate::interpreter::ast::stmt::render::Render;
 
 pub mod error;
 pub mod resolver;
@@ -115,59 +112,7 @@ where
             return self.class_declaration();
         }
 
-        if self._match(vec![TokenType::Pipeline]) {
-            return self.pipeline_declaration()
-        }
-
-        if self._match(vec![TokenType::Buffer]) {
-            return self.buffer_declaration()
-        }
-
-        if self._match(vec![TokenType::Render]) {
-            return self.render_declaration()
-        }
-
         self.statement()
-    }
-
-    fn render_declaration(&mut self) -> Result<Box<dyn Stmt<T>>> {
-        self.consume(TokenType::LeftBrace, ParserErrorType::ExpectedLeftBraceBeforeObj)?;
-        let mut elms = vec![];
-        if !self.check(TokenType::RightBrace) {
-            elms.push(self.expression()?);
-            while self.check(TokenType::Comma) {
-                elms.push(self.expression()?);
-            }
-        }
-        self.consume(TokenType::RightBrace, ParserErrorType::ExpectedRightBrace)?;
-        Ok(b!(Render::new(elms)))
-    }
-
-    fn buffer_declaration(&mut self) -> Result<Box<dyn Stmt<T>>> {
-        let name = self.consume(
-            TokenType::Identifier,
-            ParserErrorType::ExpectedIdentAfterBufferDecl
-        )?;
-        self.consume(TokenType::LeftBrace, ParserErrorType::ExpectedLeftBraceBeforeObj)?;
-
-        let obj = self.obj()?;
-
-        Ok(b!(Buffer::new(name, obj)))
-    }
-
-    fn pipeline_declaration(&mut self) -> Result<Box<dyn Stmt<T>>> {
-        let name = self.consume(
-            TokenType::Identifier,
-            ParserErrorType::ExpectedIdentAfterPipelineDecl,
-        )?;
-
-        self.consume(TokenType::LeftBrace, ParserErrorType::ExpectedLeftBraceBeforeObj)?;
-
-        println!("{name:?}");
-
-        let obj = self.obj()?;
-
-        Ok(b!(Pipeline::new(name, obj)))
     }
 
     fn class_declaration(&mut self) -> Result<Box<dyn Stmt<T>>> {

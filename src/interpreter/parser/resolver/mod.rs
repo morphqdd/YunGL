@@ -32,9 +32,6 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use crate::interpreter::ast::expr::list::List;
 use crate::interpreter::ast::expr::object::Obj;
-use crate::interpreter::ast::stmt::buffer::Buffer;
-use crate::interpreter::ast::stmt::pipeline::Pipeline;
-use crate::interpreter::ast::stmt::render::Render;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum FunctionType {
@@ -390,27 +387,5 @@ impl StmtVisitor<Result<Object>> for Resolver<'_> {
     fn visit_use(&mut self, _stmt: &Use<Result<Object>>) -> Result<Object> {
         let (_, expr) = _stmt.extract();
         self.resolve_expr(expr)
-    }
-
-    fn visit_pipeline(&mut self, stmt: &Pipeline<Result<Object>>) -> Result<Object> {
-        let (name, expr) = stmt.extract();
-        self.declare(&name);
-        self.define(&name);
-        self.resolve_expr(expr)
-    }
-
-    fn visit_buffer(&mut self, stmt: &Buffer<Result<Object>>) -> Result<Object> {
-        let (name, expr) = stmt.extract();
-        self.declare(&name);
-        self.define(&name);
-        self.resolve_expr(expr)
-    }
-
-    fn visit_render(&mut self, render: &Render<Result<Object>>) -> Result<Object> {
-        let exprs = render.extract();
-        for expr in exprs {
-            self.resolve_expr(expr)?;
-        }
-        Ok(Object::Nil)
     }
 }

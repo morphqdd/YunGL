@@ -50,11 +50,6 @@ impl Scanner {
         keywords.insert("use".into(), TokenType::Use);
         keywords.insert("export".into(), TokenType::Export);
 
-        keywords.insert("shader".into(), TokenType::Shader);
-        keywords.insert("pipeline".into(), TokenType::Pipeline);
-        keywords.insert("buffer".into(), TokenType::Buffer);
-        keywords.insert("render".into(), TokenType::Render);
-
         Self {
             source: source.into(),
             tokens: vec![],
