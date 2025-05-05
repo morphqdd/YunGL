@@ -1,3 +1,4 @@
+use crate::b;
 use crate::interpreter::ast::stmt::fun_stmt::Fun;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::error::RuntimeErrorType;
@@ -6,21 +7,20 @@ use crate::interpreter::object::callable::Callable;
 use crate::interpreter::object::class::Class;
 use crate::interpreter::object::instance::Instance;
 use crate::interpreter::object::native_object::NativeObject;
+use ordered_float::OrderedFloat;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Deref, Div, Mul, Neg, Not, Sub};
 use std::sync::{Arc, RwLock};
-use ordered_float::OrderedFloat;
-use crate::b;
 
 pub mod callable;
 pub mod class;
 pub mod instance;
 pub mod native_object;
 
-#[derive(Debug, Clone, )]
+#[derive(Debug, Clone, Default)]
 pub enum Object {
     String(String),
     Number(f64),
@@ -30,6 +30,7 @@ pub enum Object {
     Instance(Instance),
     NativeObject(NativeObject),
     Arc(Arc<Object>),
+    #[default]
     Nil,
     Void,
     List(Vec<Object>),
@@ -94,11 +95,7 @@ impl Object {
         ))
     }
 
-    pub fn class(
-        name: &str,
-        methods: HashMap<String, Object>,
-        superclass: Option<Object>,
-    ) -> Self {
+    pub fn class(name: &str, methods: HashMap<String, Object>, superclass: Option<Object>) -> Self {
         Self::Class(b!(Class::new(name.to_string(), methods, superclass)))
     }
 
@@ -116,20 +113,20 @@ impl Object {
             _ => panic!("Interpreter bug"),
         }
     }
-    
+
     pub fn clone_into_rc(&self) -> Self {
         match self {
             Object::Arc(obj) => obj.clone().deref().clone(),
-            _ => self.clone()
+            _ => self.clone(),
         }
     }
-    
+
     pub fn inner(&self) -> &Self {
         match self {
             Object::Arc(rc) => rc.inner(),
             _ => self,
         }
-    } 
+    }
 }
 
 impl Neg for Object {
@@ -182,7 +179,7 @@ impl Add for Object {
                 new.append(&mut a.clone());
                 new.push(rhs.clone());
                 Ok(Object::List(new))
-            },
+            }
             (Object::Arc(rc), _) => rc.clone_into_rc() + rhs,
             (_, Object::Arc(rc)) => self + rc.clone_into_rc(),
             _ => Err(RuntimeErrorType::CannotAddTypes(self.get_type(), rhs.get_type()).into()),
@@ -272,18 +269,28 @@ impl Display for Object {
             Object::Instance(instance) => write!(f, "{}", instance),
             Object::NativeObject(_) => write!(f, "<native object>"),
             Object::Arc(rc) => write!(f, "{}", rc),
-            Object::List(list) => write!(f, "[{}]", list.iter().map(
-                |obj| match obj {
-                    Object::String(str) => format!("{:?}", str),
-                    _ => obj.to_string(),
-                }
-            ).collect::<Vec<_>>().join(", ")),
-            Object::Dictionary(obj) => write!(f, "{{{}}}", obj.iter().map(
-                |(key, obj)|  match obj {
-                    Object::String(str) => format!("{}: {:?}", key, str),
-                    _ => format!("{}: {}", key, obj),
-                }
-            ).collect::<Vec<_>>().join(", "))
+            Object::List(list) => write!(
+                f,
+                "[{}]",
+                list.iter()
+                    .map(|obj| match obj {
+                        Object::String(str) => format!("{:?}", str),
+                        _ => obj.to_string(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Object::Dictionary(obj) => write!(
+                f,
+                "{{{}}}",
+                obj.iter()
+                    .map(|(key, obj)| match obj {
+                        Object::String(str) => format!("{}: {:?}", key, str),
+                        _ => format!("{}: {}", key, obj),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 }

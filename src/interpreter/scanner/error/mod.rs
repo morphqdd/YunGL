@@ -1,5 +1,5 @@
-use crate::interpreter::error::InterpreterError;
 use crate::interpreter::Interpreter;
+use crate::interpreter::error::InterpreterError;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 

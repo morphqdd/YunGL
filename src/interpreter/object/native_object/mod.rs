@@ -1,8 +1,8 @@
-use downcast_rs::{impl_downcast, Downcast};
+use crate::utils::next_id;
+use downcast_rs::{Downcast, impl_downcast};
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::time::Instant;
-use crate::utils::next_id;
 
 #[derive(Debug, Clone)]
 pub struct NativeObject {
@@ -12,7 +12,10 @@ pub struct NativeObject {
 
 impl NativeObject {
     pub fn new(value: Box<dyn Native>) -> Self {
-        Self { id: next_id(), value }
+        Self {
+            id: next_id(),
+            value,
+        }
     }
 
     pub fn extract(self) -> Box<dyn Native> {

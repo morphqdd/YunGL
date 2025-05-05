@@ -1,8 +1,8 @@
-use std::ops::Deref;
 use crate::interpreter::ast::expr::Expr;
 use crate::interpreter::ast::stmt::{Stmt, StmtVisitor};
+use std::ops::Deref;
 
-type ExtractedIf<'a ,T> = (&'a dyn Expr<T>, &'a dyn Stmt<T>, Option<&'a dyn Stmt<T>>);
+type ExtractedIf<'a, T> = (&'a dyn Expr<T>, &'a dyn Stmt<T>, Option<&'a dyn Stmt<T>>);
 
 #[derive(Clone)]
 pub struct If<T: 'static> {
@@ -25,7 +25,11 @@ impl<T> If<T> {
     }
 
     pub fn extract(&self) -> ExtractedIf<T> {
-        (self.cond.deref(), self.then_stmt.deref(), self.else_stmt.as_deref())
+        (
+            self.cond.deref(),
+            self.then_stmt.deref(),
+            self.else_stmt.as_deref(),
+        )
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::interpreter::ast::expr::{Expr, ExprVisitor};
-use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::interpreter::scanner::token::Token;
+use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::utils::next_id;
 use std::ops::Deref;
 

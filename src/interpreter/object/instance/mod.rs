@@ -1,7 +1,7 @@
 use crate::interpreter::error::Result;
 use crate::interpreter::error::{RuntimeError, RuntimeErrorType};
-use crate::interpreter::object::class::Class;
 use crate::interpreter::object::Object;
+use crate::interpreter::object::class::Class;
 use crate::interpreter::scanner::token::Token;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -40,7 +40,8 @@ impl Instance {
 
     pub fn set(&self, name: &Token, value: Object) {
         self.fields
-            .write().unwrap()
+            .write()
+            .unwrap()
             .insert(name.get_lexeme().to_string(), value);
     }
 }
@@ -54,7 +55,11 @@ impl Display for Instance {
 impl PartialEq for Instance {
     fn eq(&self, other: &Self) -> bool {
         self.class == other.class
-            && self.fields.read().unwrap().eq(&other.fields.read().unwrap())
+            && self
+                .fields
+                .read()
+                .unwrap()
+                .eq(&other.fields.read().unwrap())
     }
 }
 

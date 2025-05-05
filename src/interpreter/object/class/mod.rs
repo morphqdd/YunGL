@@ -1,6 +1,6 @@
+use crate::interpreter::object::Object;
 use crate::interpreter::object::callable::Callable;
 use crate::interpreter::object::instance::Instance;
-use crate::interpreter::object::Object;
 use crate::rc;
 use crate::utils::next_id;
 use std::collections::HashMap;
@@ -18,11 +18,7 @@ pub struct Class {
 }
 
 impl Class {
-    pub fn new(
-        name: String,
-        methods: HashMap<String, Object>,
-        superclass: Option<Object>,
-    ) -> Self {
+    pub fn new(name: String, methods: HashMap<String, Object>, superclass: Option<Object>) -> Self {
         Self {
             id: next_id(),
             name: rc!(name),
@@ -37,7 +33,7 @@ impl Class {
         } else if let Some(superclass) = self.superclass.clone() {
             match superclass.inner() {
                 Object::Class(class) => class.find_method(name),
-                _ => panic!("Interpreter bug!")
+                _ => panic!("Interpreter bug!"),
             }
         } else {
             None
@@ -95,10 +91,14 @@ impl Hash for Class {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
         self.name.hash(state);
-        self.methods.deref().clone().iter().for_each(|(key, value)| {
-            key.hash(state);
-            value.hash(state);
-        });
+        self.methods
+            .deref()
+            .clone()
+            .iter()
+            .for_each(|(key, value)| {
+                key.hash(state);
+                value.hash(state);
+            });
         self.superclass.hash(state);
     }
 }

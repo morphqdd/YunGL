@@ -1,6 +1,6 @@
+use crate::interpreter::Interpreter;
 use crate::interpreter::error::InterpreterError;
 use crate::interpreter::scanner::token::Token;
-use crate::interpreter::Interpreter;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone)]

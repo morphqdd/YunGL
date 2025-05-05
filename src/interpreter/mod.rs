@@ -12,10 +12,13 @@ use crate::interpreter::ast::expr::binary::Binary;
 use crate::interpreter::ast::expr::call::Call;
 use crate::interpreter::ast::expr::get::Get;
 use crate::interpreter::ast::expr::grouping::Grouping;
+use crate::interpreter::ast::expr::list::List;
 use crate::interpreter::ast::expr::literal::Literal;
 use crate::interpreter::ast::expr::logical::Logical;
+use crate::interpreter::ast::expr::object::Obj;
 use crate::interpreter::ast::expr::self_expr::SelfExpr;
 use crate::interpreter::ast::expr::set::Set;
+use crate::interpreter::ast::expr::superclass::Super;
 use crate::interpreter::ast::expr::unary::Unary;
 use crate::interpreter::ast::expr::variable::Variable;
 use crate::interpreter::ast::expr::{CloneExpr, Expr, ExprVisitor};
@@ -35,39 +38,40 @@ use crate::interpreter::environment::Environment;
 use crate::interpreter::error::Result;
 use crate::interpreter::error::{InterpreterError, RuntimeError, RuntimeErrorType};
 use crate::interpreter::exporter::Exporter;
-use crate::interpreter::parser::resolver::Resolver;
 use crate::interpreter::parser::Parser;
-use crate::interpreter::scanner::token::token_type::TokenType;
-use crate::interpreter::scanner::token::Token;
+use crate::interpreter::parser::resolver::Resolver;
 use crate::interpreter::scanner::Scanner;
+use crate::interpreter::scanner::token::Token;
+use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::interpreter::shell::Shell;
 use crate::utils::next_id;
 use crate::{b, rc};
+use glium::Display;
+use glium::backend::glutin::SimpleWindowBuilder;
+use glium::glutin::surface::WindowSurface;
+use glium::winit::application::ApplicationHandler;
+use glium::winit::event::{Event, StartCause, WindowEvent};
+use glium::winit::event_loop::{ActiveEventLoop, EventLoopBuilder, EventLoopProxy};
+use glium::winit::window::{Window, WindowId};
+use object::Object;
 use object::callable::Callable;
 use object::native_object::NativeObject;
-use object::Object;
 use std::collections::HashMap;
 use std::io::Write;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::exit;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use std::{fs, io};
-use std::sync::{Arc, RwLock};
-use glium::backend::glutin::SimpleWindowBuilder;
-use glium::Display;
-use glium::glutin::surface::WindowSurface;
-use glium::winit::application::ApplicationHandler;
-use glium::winit::event::{StartCause, WindowEvent};
-use glium::winit::event_loop::{ActiveEventLoop, EventLoopBuilder};
-use glium::winit::window::{Window, WindowId};
-use crate::interpreter::ast::expr::list::List;
-use crate::interpreter::ast::expr::object::Obj;
-use crate::interpreter::ast::expr::superclass::Super;
+use crate::interpreter::event::InterpreterEvent;
+
+pub mod event;
 
 pub struct Interpreter {
     window: Window,
     display: Display<WindowSurface>,
+    proxy: EventLoopProxy<InterpreterEvent>,
     path: PathBuf,
     env: Option<Arc<RwLock<Environment>>>,
     globals: Option<Arc<RwLock<Environment>>>,
@@ -75,7 +79,7 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
-    pub fn new(window: Window, display: Display<WindowSurface>, path: PathBuf) -> Self {
+    pub fn new(window: Window, display: Display<WindowSurface>, proxy: EventLoopProxy<InterpreterEvent>, path: PathBuf) -> Self {
         let mut globals = Environment::default();
 
         globals.define(
@@ -85,13 +89,13 @@ impl Interpreter {
                 None,
                 None,
                 rc!(|interpreter, args| {
-                    println!("{}", args[0]);
+                    interpreter.proxy.send_event(InterpreterEvent::Render(args[0].clone()))?;
                     Ok(Object::Nil)
                 }),
                 rc!(|| 1),
                 rc!(|| "render".into()),
-                false
-            )))
+                false,
+            ))),
         );
 
         globals.define(
@@ -224,6 +228,7 @@ impl Interpreter {
         Self {
             window,
             display,
+            proxy,
             path,
             env: Some(globals.clone()),
             globals: Some(globals),
@@ -232,10 +237,7 @@ impl Interpreter {
     }
     pub fn run_script(&mut self) -> Result<()> {
         let code = fs::read_to_string(&self.path).unwrap();
-        if let Err(err) = self.run(&code) {
-            println!("{}", err);
-            exit(65)
-        };
+        self.run(&code)?;
         Ok(())
     }
 
@@ -246,7 +248,6 @@ impl Interpreter {
     }
 
     fn run(&mut self, code: &str) -> Result<()> {
-
         let mut scanner = Scanner::new(code);
         let tokens = scanner.scan_tokens()?;
 
@@ -374,6 +375,45 @@ impl Interpreter {
             },
             msg
         )
+    }
+}
+
+impl ApplicationHandler<InterpreterEvent> for Interpreter {
+    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
+        match cause {
+            StartCause::Init => {
+                if let Err(err) = self.run_script() {
+                    println!("{}", err);
+                    exit(65);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn resumed(&mut self, _event_loop: &ActiveEventLoop) {}
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: InterpreterEvent) {
+        match event {
+            InterpreterEvent::Render(object) => {
+
+            }
+            InterpreterEvent::None => {}
+        }
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        match event {
+            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::RedrawRequested => {
+
+            }
+            _ => {}
+        }
     }
 }
 
@@ -509,15 +549,20 @@ impl ExprVisitor<Result<Object>> for Interpreter {
 
     fn visit_super(&mut self, super_val: &Super) -> Result<Object> {
         let (keyword, method_name) = super_val.extract();
-        let distance = self.locals.get(&<Super as Expr<Result<Object>>>::id(super_val)).unwrap();
+        let distance = self
+            .locals
+            .get(&<Super as Expr<Result<Object>>>::id(super_val))
+            .unwrap();
         let superclass = Environment::get_at(self.env.clone(), *distance, &keyword)?;
-        let instance = Environment::get_at(self.env.clone(), 1, &Token::builtin_void(TokenType::Slf, "self", None))?;
+        let instance = Environment::get_at(
+            self.env.clone(),
+            1,
+            &Token::builtin_void(TokenType::Slf, "self", None),
+        )?;
 
         let method = match superclass.inner() {
-            Object::Class(class) => {
-                class.find_method(method_name.get_lexeme())
-            }
-            _ => panic!("Interpreter bug!")
+            Object::Class(class) => class.find_method(method_name.get_lexeme()),
+            _ => panic!("Interpreter bug!"),
         };
 
         if let Some(method) = method {
@@ -526,7 +571,11 @@ impl ExprVisitor<Result<Object>> for Interpreter {
             }
         }
 
-        Err(RuntimeError::new(method_name.clone(), RuntimeErrorType::UndefinedProperty(method_name.get_lexeme().into())).into())
+        Err(RuntimeError::new(
+            method_name.clone(),
+            RuntimeErrorType::UndefinedProperty(method_name.get_lexeme().into()),
+        )
+        .into())
     }
 
     fn visit_list(&mut self, list: &List<Result<Object>>) -> Result<Object> {
@@ -572,7 +621,8 @@ impl StmtVisitor<Result<Object>> for Interpreter {
                         .into());
                     }
                     Some(env) => {
-                        env.write().unwrap()
+                        env.write()
+                            .unwrap()
                             .define(stmt.get_ident().get_lexeme(), Some(value));
                     }
                 }
@@ -586,7 +636,9 @@ impl StmtVisitor<Result<Object>> for Interpreter {
                     .into());
                 }
                 Some(env) => {
-                    env.write().unwrap().define(stmt.get_ident().get_lexeme(), None);
+                    env.write()
+                        .unwrap()
+                        .define(stmt.get_ident().get_lexeme(), None);
                 }
             },
         }
@@ -652,9 +704,8 @@ impl StmtVisitor<Result<Object>> for Interpreter {
     fn visit_class(&mut self, class: &Class<Result<Object>>) -> Result<Object> {
         let (name, methods, superclass) = class.extract();
         if let Some(env) = self.env.clone() {
-
             let superclass = if let Some(superclass) = superclass {
-                if let Object::Arc(rc) =  self.evaluate(superclass)? {
+                if let Object::Arc(rc) = self.evaluate(superclass)? {
                     if let Object::Class(_) = rc.deref() {
                         Some(Object::Arc(rc))
                     } else {
@@ -662,27 +713,31 @@ impl StmtVisitor<Result<Object>> for Interpreter {
                             superclass.get_token(),
                             RuntimeErrorType::SuperclassMustBeClass,
                         )
-                            .into());
+                        .into());
                     }
                 } else {
                     return Err(RuntimeError::new(
                         superclass.get_token(),
                         RuntimeErrorType::SuperclassMustBeClass,
                     )
-                        .into());
+                    .into());
                 }
-                
             } else {
                 None
             };
-            
+
             if let Some(superclass) = superclass.clone() {
                 self.env = Some(Arc::new(RwLock::new(Environment::new(self.env.clone()))));
-                self.env.clone().unwrap().write().unwrap().define("super", Some(superclass));
+                self.env
+                    .clone()
+                    .unwrap()
+                    .write()
+                    .unwrap()
+                    .define("super", Some(superclass));
             }
 
             env.write().unwrap().define(name.get_lexeme(), None);
-            
+
             let mut methods_ = HashMap::with_capacity(methods.len());
 
             for method in methods {
@@ -715,30 +770,5 @@ impl StmtVisitor<Result<Object>> for Interpreter {
 
     fn visit_use(&mut self, _stmt: &Use<Result<Object>>) -> Result<Object> {
         Ok(Object::Nil)
-    }
-}
-
-impl ApplicationHandler for Interpreter {
-    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
-        match cause {
-            StartCause::Init => {
-                if let Err(err) = self.run_script() {
-                    println!("{}", err);
-                }
-            }
-            _ => {}
-        }
-    }
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-
-    }
-
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
-        match event {
-            WindowEvent::CloseRequested => {
-                event_loop.exit()
-            }
-            _ => {}
-        }
     }
 }

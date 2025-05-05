@@ -98,14 +98,15 @@ impl Environment {
     ) -> Result<Object> {
         if let Some(environment) = Environment::ancestor(env, distance) {
             environment
-                .write().unwrap()
+                .write()
+                .unwrap()
                 .values
                 .insert(name.get_lexeme().to_string(), Some(value.clone()));
             return Ok(value);
         }
         Err(RuntimeError::new(name.clone(), RuntimeErrorType::BugEnvironmentNotInit).into())
     }
-    
+
     pub fn get_enclosing(&self) -> Option<Arc<RwLock<Environment>>> {
         self.enclosing.clone()
     }

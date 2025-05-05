@@ -1,10 +1,10 @@
+use crate::interpreter::Interpreter;
 use crate::interpreter::ast::stmt::fun_stmt::Fun;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::error::{InterpreterError, Result};
 use crate::interpreter::object::Object;
-use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::interpreter::scanner::token::Token;
-use crate::interpreter::Interpreter;
+use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::rc;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
@@ -29,7 +29,13 @@ impl Callable {
         closure: Option<Arc<RwLock<Environment>>>,
         is_init: bool,
     ) -> Self {
-        let (id, name, params, body) = declaration.clone().unwrap().read().unwrap().clone().extract();
+        let (id, name, params, body) = declaration
+            .clone()
+            .unwrap()
+            .read()
+            .unwrap()
+            .clone()
+            .extract();
         let arity = params.len();
         let lexeme = name.get_lexeme().to_string();
         Self {

@@ -5,14 +5,17 @@ use crate::utils::next_id;
 #[derive(Clone)]
 pub struct SelfExpr {
     id: u64,
-    name: Token
+    name: Token,
 }
 
 impl SelfExpr {
     pub fn new(name: Token) -> Self {
-        Self { id: next_id(), name }
+        Self {
+            id: next_id(),
+            name,
+        }
     }
-    
+
     pub fn get_name(&self) -> Token {
         self.name.clone()
     }

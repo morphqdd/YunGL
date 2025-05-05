@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use crate::interpreter::ast::expr::{Expr, ExprVisitor};
 use crate::interpreter::scanner::token::Token;
 use crate::utils::next_id;
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct Obj<T: 'static> {
@@ -11,7 +11,10 @@ pub struct Obj<T: 'static> {
 
 impl<T> Obj<T> {
     pub fn new(values: HashMap<Token, Box<dyn Expr<T>>>) -> Self {
-        Self { id: next_id(), values }
+        Self {
+            id: next_id(),
+            values,
+        }
     }
 
     pub fn extract(&self) -> &HashMap<Token, Box<dyn Expr<T>>> {

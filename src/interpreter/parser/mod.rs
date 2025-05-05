@@ -1,18 +1,20 @@
-use std::collections::HashMap;
 use crate::b;
+use crate::interpreter::ast::expr::Expr;
 use crate::interpreter::ast::expr::assignment::Assign;
 use crate::interpreter::ast::expr::binary::Binary;
 use crate::interpreter::ast::expr::call::Call;
 use crate::interpreter::ast::expr::get::Get;
 use crate::interpreter::ast::expr::grouping::Grouping;
+use crate::interpreter::ast::expr::list::List;
 use crate::interpreter::ast::expr::literal::Literal;
 use crate::interpreter::ast::expr::logical::Logical;
+use crate::interpreter::ast::expr::object::Obj;
 use crate::interpreter::ast::expr::self_expr::SelfExpr;
 use crate::interpreter::ast::expr::set::Set;
 use crate::interpreter::ast::expr::superclass::Super;
 use crate::interpreter::ast::expr::unary::Unary;
 use crate::interpreter::ast::expr::variable::Variable;
-use crate::interpreter::ast::expr::Expr;
+use crate::interpreter::ast::stmt::Stmt;
 use crate::interpreter::ast::stmt::block::Block;
 use crate::interpreter::ast::stmt::class::Class;
 use crate::interpreter::ast::stmt::export_stmt::Export;
@@ -24,15 +26,13 @@ use crate::interpreter::ast::stmt::return_stmt::Return;
 use crate::interpreter::ast::stmt::stmt_expr::StmtExpr;
 use crate::interpreter::ast::stmt::use_stmt::Use;
 use crate::interpreter::ast::stmt::while_stmt::While;
-use crate::interpreter::ast::stmt::Stmt;
 use crate::interpreter::error::Result;
 use crate::interpreter::object::Object;
 use crate::interpreter::parser::error::{ParserError, ParserErrorType};
-use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::interpreter::scanner::token::Token;
+use crate::interpreter::scanner::token::token_type::TokenType;
+use std::collections::HashMap;
 use std::marker::PhantomData;
-use crate::interpreter::ast::expr::list::List;
-use crate::interpreter::ast::expr::object::Obj;
 
 pub mod error;
 pub mod resolver;
@@ -534,13 +534,13 @@ where
 
             return Ok(b!(Super::new(keyword, method)));
         }
-        
+
         if self._match(vec![TokenType::LeftBracket]) {
-            return self.list()
+            return self.list();
         }
 
         if self._match(vec![TokenType::LeftBrace]) {
-            return self.obj()
+            return self.obj();
         }
 
         Err(self
@@ -551,20 +551,28 @@ where
     fn obj(&mut self) -> Result<Box<dyn Expr<T>>> {
         let mut values = HashMap::new();
         if !self.check(TokenType::RightBrace) {
-            let name = if self._match(vec![TokenType::Identifier, TokenType::Number, TokenType::String]) {
-                 self.previous()
-            }else {
-                return Err(ParserError::new(self.peek(), ParserErrorType::ExpectedKey).into())
+            let name = if self._match(vec![
+                TokenType::Identifier,
+                TokenType::Number,
+                TokenType::String,
+            ]) {
+                self.previous()
+            } else {
+                return Err(ParserError::new(self.peek(), ParserErrorType::ExpectedKey).into());
             };
             println!("{name}");
             self.consume(TokenType::Colon, ParserErrorType::ExpectedColon)?;
             let value = self.expression()?;
             values.insert(name, value);
             while self._match(vec![TokenType::Comma]) {
-                let name = if self._match(vec![TokenType::Identifier, TokenType::Number, TokenType::String]) {
+                let name = if self._match(vec![
+                    TokenType::Identifier,
+                    TokenType::Number,
+                    TokenType::String,
+                ]) {
                     self.previous()
-                }else {
-                    return Err(ParserError::new(self.peek(), ParserErrorType::ExpectedKey).into())
+                } else {
+                    return Err(ParserError::new(self.peek(), ParserErrorType::ExpectedKey).into());
                 };
                 self.consume(TokenType::Colon, ParserErrorType::ExpectedColon)?;
                 let value = self.expression()?;
@@ -583,10 +591,13 @@ where
                 values.push(self.expression()?);
             }
         }
-        self.consume(TokenType::RightBracket, ParserErrorType::ExpectedRightBracket)?;
+        self.consume(
+            TokenType::RightBracket,
+            ParserErrorType::ExpectedRightBracket,
+        )?;
         Ok(b!(List::new(values)))
     }
-    
+
     fn _match(&mut self, types: Vec<TokenType>) -> bool {
         for ty in types {
             if self.check(ty) {

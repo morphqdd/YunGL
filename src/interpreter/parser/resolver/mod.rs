@@ -1,10 +1,13 @@
+use crate::interpreter::Interpreter;
 use crate::interpreter::ast::expr::assignment::Assign;
 use crate::interpreter::ast::expr::binary::Binary;
 use crate::interpreter::ast::expr::call::Call;
 use crate::interpreter::ast::expr::get::Get;
 use crate::interpreter::ast::expr::grouping::Grouping;
+use crate::interpreter::ast::expr::list::List;
 use crate::interpreter::ast::expr::literal::Literal;
 use crate::interpreter::ast::expr::logical::Logical;
+use crate::interpreter::ast::expr::object::Obj;
 use crate::interpreter::ast::expr::self_expr::SelfExpr;
 use crate::interpreter::ast::expr::set::Set;
 use crate::interpreter::ast::expr::superclass::Super;
@@ -27,11 +30,8 @@ use crate::interpreter::error::Result;
 use crate::interpreter::object::Object;
 use crate::interpreter::parser::error::{ParserError, ParserErrorType};
 use crate::interpreter::scanner::token::Token;
-use crate::interpreter::Interpreter;
 use std::collections::HashMap;
 use std::ops::Deref;
-use crate::interpreter::ast::expr::list::List;
-use crate::interpreter::ast::expr::object::Obj;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum FunctionType {
@@ -227,9 +227,17 @@ impl ExprVisitor<Result<Object>> for Resolver<'_> {
 
     fn visit_super(&mut self, super_val: &Super) -> Result<Object> {
         if self.current_class == ClassType::None {
-            return Err(ParserError::new(super_val.extract().0, ParserErrorType::CantUseSuperOutsideOfClass).into())
+            return Err(ParserError::new(
+                super_val.extract().0,
+                ParserErrorType::CantUseSuperOutsideOfClass,
+            )
+            .into());
         } else if self.current_class != ClassType::SubClass {
-            return Err(ParserError::new(super_val.extract().0, ParserErrorType::CantUseSuperInClassWithoutSuperClasses).into())
+            return Err(ParserError::new(
+                super_val.extract().0,
+                ParserErrorType::CantUseSuperInClassWithoutSuperClasses,
+            )
+            .into());
         }
         self.resolve_local(super_val, &super_val.extract().0);
         Ok(Object::Nil)

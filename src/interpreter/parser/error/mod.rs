@@ -1,6 +1,6 @@
+use crate::interpreter::Interpreter;
 use crate::interpreter::error::InterpreterError;
 use crate::interpreter::scanner::token::Token;
-use crate::interpreter::Interpreter;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone)]
@@ -144,15 +144,25 @@ impl Display for ParserErrorType {
             ParserErrorType::CantInheritItSelf => write!(f, "A class can't inherit from itself!"),
             ParserErrorType::ExpectedMethodAfterDot => write!(f, "Expected method after '.'!"),
             ParserErrorType::ExpectedDotAfterSuper => write!(f, "Expected '.'!"),
-            ParserErrorType::CantUseSuperOutsideOfClass => write!(f, "Can't use 'super' outside of a class!"),
-            ParserErrorType::CantUseSuperInClassWithoutSuperClasses => write!(f, "Can't use 'super' in class without superclasses!"),
+            ParserErrorType::CantUseSuperOutsideOfClass => {
+                write!(f, "Can't use 'super' outside of a class!")
+            }
+            ParserErrorType::CantUseSuperInClassWithoutSuperClasses => {
+                write!(f, "Can't use 'super' in class without superclasses!")
+            }
             ParserErrorType::ExpectedRightBracket => write!(f, "Expected ']'!"),
             ParserErrorType::ExpectedRightBrace => write!(f, "Expected '}}'!"),
-            ParserErrorType::ExpectedColon => write!(f,"Expected ':'!"),
+            ParserErrorType::ExpectedColon => write!(f, "Expected ':'!"),
             ParserErrorType::ExpectedKey => write!(f, "Expected key!"),
-            ParserErrorType::ExpectedIdentAfterPipelineDecl => write!(f, "Expected identifier after pipeline declaration!"),
-            ParserErrorType::ExpectedLeftBraceBeforeObj => write!(f, "Expected '{{' before object!"),
-            ParserErrorType::ExpectedIdentAfterBufferDecl => write!(f, "Expected identifier after buffer declaration!"),
+            ParserErrorType::ExpectedIdentAfterPipelineDecl => {
+                write!(f, "Expected identifier after pipeline declaration!")
+            }
+            ParserErrorType::ExpectedLeftBraceBeforeObj => {
+                write!(f, "Expected '{{' before object!")
+            }
+            ParserErrorType::ExpectedIdentAfterBufferDecl => {
+                write!(f, "Expected identifier after buffer declaration!")
+            }
         }
     }
 }

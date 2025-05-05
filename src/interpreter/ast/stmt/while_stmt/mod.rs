@@ -1,6 +1,6 @@
-use std::ops::Deref;
 use crate::interpreter::ast::expr::Expr;
 use crate::interpreter::ast::stmt::{Stmt, StmtVisitor};
+use std::ops::Deref;
 
 #[derive(Clone)]
 pub struct While<T: 'static> {

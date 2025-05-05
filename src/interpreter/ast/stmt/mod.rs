@@ -9,7 +9,7 @@ use crate::interpreter::ast::stmt::return_stmt::Return;
 use crate::interpreter::ast::stmt::stmt_expr::StmtExpr;
 use crate::interpreter::ast::stmt::use_stmt::Use;
 use crate::interpreter::ast::stmt::while_stmt::While;
-use downcast_rs::{impl_downcast, Downcast};
+use downcast_rs::{Downcast, impl_downcast};
 
 pub mod block;
 pub mod class;

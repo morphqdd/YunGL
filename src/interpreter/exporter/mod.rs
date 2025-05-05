@@ -1,8 +1,8 @@
 use crate::b;
 use crate::interpreter::ast::expr::literal::Literal;
+use crate::interpreter::ast::stmt::Stmt;
 use crate::interpreter::ast::stmt::export_stmt::Export;
 use crate::interpreter::ast::stmt::use_stmt::Use;
-use crate::interpreter::ast::stmt::Stmt;
 use crate::interpreter::error::Result;
 use crate::interpreter::exporter::error::{ExporterError, ExporterErrorType};
 use crate::interpreter::object::Object;

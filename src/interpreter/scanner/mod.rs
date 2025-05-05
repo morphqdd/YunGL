@@ -3,10 +3,10 @@ pub mod token;
 use crate::interpreter::error::Result;
 use crate::interpreter::object::Object;
 use crate::interpreter::scanner::error::{ScannerError, ScannerErrorType};
-use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::interpreter::scanner::token::Token;
-use std::collections::HashMap;
+use crate::interpreter::scanner::token::token_type::TokenType;
 use downcast_rs::Downcast;
+use std::collections::HashMap;
 
 pub mod error;
 
@@ -219,9 +219,7 @@ impl Scanner {
         self.add_token(
             TokenType::Number,
             Some(Object::Number(
-                self.source[self.start..self.current]
-                    .to_string()
-                    .parse()?,
+                self.source[self.start..self.current].to_string().parse()?,
             )),
         );
         Ok(())

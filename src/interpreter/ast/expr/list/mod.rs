@@ -9,9 +9,12 @@ pub struct List<T: 'static> {
 
 impl<T> List<T> {
     pub fn new(values: Vec<Box<dyn Expr<T>>>) -> Self {
-        Self { id: next_id(), values }
+        Self {
+            id: next_id(),
+            values,
+        }
     }
-    
+
     pub fn extract_values(&self) -> Vec<&dyn Expr<T>> {
         self.values.iter().map(AsRef::as_ref).collect()
     }
