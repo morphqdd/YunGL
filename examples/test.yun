@@ -1,42 +1,20 @@
-shader vertexShader {
-    source: "
-        #version 330 core
-        in vec3 position;
-        void main() {
-            gl_Position = vec4(position, 1.0);
-        }
-    ";
-}
-
-shader fragmentShader {
-    source: "
-        #version 330 core
-        out vec4 color;
-        void main() {
-            color = vec4(0.0, 1.0, 0.0, 1.0);
-        }
-    ";
-}
-
 pipeline trianglePipeline {
-    vertex: vertexShader;
-    fragment: fragmentShader;
     attributes: {
-        position: vec3;
+        position: vec3,
     }
-    primitive: triangles;
+    primitive: "triangles"
 }
 
 
 buffer vertices {
     data: [
         { x: 0.0, y: 0.5 },
-        { x: -0.5, y: -0.5 cl},
+        { x: -0.5, y: -0.5 },
         { x: 0.5, y: -0.5 }
-    ]
+    ],
     layout: vec2
 }
 
 render {
-    (trianglePipeline, vertices)
+    [trianglePipeline, vertices],
 }

@@ -10,6 +10,8 @@ use crate::interpreter::ast::stmt::stmt_expr::StmtExpr;
 use crate::interpreter::ast::stmt::use_stmt::Use;
 use crate::interpreter::ast::stmt::while_stmt::While;
 use downcast_rs::{impl_downcast, Downcast};
+use crate::interpreter::ast::stmt::buffer::Buffer;
+use crate::interpreter::ast::stmt::pipeline::Pipeline;
 
 pub mod block;
 pub mod class;
@@ -22,6 +24,9 @@ pub mod return_stmt;
 pub mod stmt_expr;
 pub mod use_stmt;
 pub mod while_stmt;
+pub mod pipeline;
+pub mod buffer;
+pub mod render;
 
 pub trait StmtVisitor<T> {
     fn visit_expr(&mut self, stmt: &StmtExpr<T>) -> T;
@@ -35,6 +40,9 @@ pub trait StmtVisitor<T> {
     fn visit_class(&mut self, stmt: &Class<T>) -> T;
     fn visit_export(&mut self, stmt: &Export<T>) -> T;
     fn visit_use(&mut self, stmt: &Use<T>) -> T;
+    fn visit_pipeline(&mut self, stmt: &Pipeline<T>) -> T;
+    fn visit_buffer(&mut self, stmt: &Buffer<T>) -> T;
+    fn visit_render(&mut self, render: &Render<T>) -> T;
 }
 
 pub trait CloneStmt<T> {

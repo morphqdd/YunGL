@@ -71,6 +71,8 @@ pub enum ParserErrorType {
     ExpectedRightBrace,
     ExpectedColon,
     ExpectedKey,
+    ExpectedIdentAfterPipelineDecl,
+    ExpectedLeftBraceBeforeObj,
 }
 
 impl Display for ParserErrorType {

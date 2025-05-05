@@ -112,7 +112,24 @@ where
             return self.class_declaration();
         }
 
+        if self._match(vec![TokenType::Pipeline]) {
+            return self.pipeline_declaration()
+        }
+
         self.statement()
+    }
+
+    fn pipeline_declaration(&mut self) -> Result<Box<dyn Stmt<T>>> {
+        let name = self.consume(
+            TokenType::Identifier,
+            ParserErrorType::ExpectedIdentAfterPipelineDecl,
+        )?;
+
+        self.consume(TokenType::LeftBrace, ParserErrorType::ExpectedLeftBraceBeforeObj)?;
+
+        let obj = self.expression()?;
+
+        return Ok(b!(Pipeline::new(name, obj)));
     }
 
     fn class_declaration(&mut self) -> Result<Box<dyn Stmt<T>>> {
