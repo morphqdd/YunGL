@@ -73,6 +73,7 @@ pub enum ParserErrorType {
     ExpectedKey,
     ExpectedIdentAfterPipelineDecl,
     ExpectedLeftBraceBeforeObj,
+    ExpectedIdentAfterBufferDecl,
 }
 
 impl Display for ParserErrorType {
@@ -149,6 +150,9 @@ impl Display for ParserErrorType {
             ParserErrorType::ExpectedRightBrace => write!(f, "Expected '}}'!"),
             ParserErrorType::ExpectedColon => write!(f,"Expected ':'!"),
             ParserErrorType::ExpectedKey => write!(f, "Expected key!"),
+            ParserErrorType::ExpectedIdentAfterPipelineDecl => write!(f, "Expected identifier after pipeline declaration!"),
+            ParserErrorType::ExpectedLeftBraceBeforeObj => write!(f, "Expected '{{' before object!"),
+            ParserErrorType::ExpectedIdentAfterBufferDecl => write!(f, "Expected identifier after buffer declaration!"),
         }
     }
 }

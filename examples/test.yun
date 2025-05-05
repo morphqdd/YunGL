@@ -1,7 +1,7 @@
 pipeline trianglePipeline {
     attributes: {
-        position: vec3,
-    }
+        position: "vec2"
+    },
     primitive: "triangles"
 }
 
@@ -12,9 +12,9 @@ buffer vertices {
         { x: -0.5, y: -0.5 },
         { x: 0.5, y: -0.5 }
     ],
-    layout: vec2
+    layout: "vec2"
 }
 
 render {
-    [trianglePipeline, vertices],
+    [trianglePipeline, vertices]
 }

@@ -12,6 +12,7 @@ use crate::interpreter::ast::stmt::while_stmt::While;
 use downcast_rs::{impl_downcast, Downcast};
 use crate::interpreter::ast::stmt::buffer::Buffer;
 use crate::interpreter::ast::stmt::pipeline::Pipeline;
+use crate::interpreter::ast::stmt::render::Render;
 
 pub mod block;
 pub mod class;

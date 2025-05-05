@@ -4,17 +4,16 @@ use crate::interpreter::scanner::token::Token;
 
 #[derive(Clone)]
 pub struct Render<T: 'static> {
-    name: Token,
     elements: Vec<Box<dyn Expr<T>>>
 }
 
 impl<T> Render<T> {
-    pub fn new(name: Token, elements: Vec<Box<dyn Expr<T>>>) -> Self {
-        Self { name, elements }
+    pub fn new(elements: Vec<Box<dyn Expr<T>>>) -> Self {
+        Self { elements }
     }
 
-    pub fn extract(&self) -> (&Token, Vec<&dyn Expr<T>>) {
-        (&self.name, self.elements.iter().map(AsRef::as_ref).collect())
+    pub fn extract(&self) -> Vec<&dyn Expr<T>> {
+        self.elements.iter().map(AsRef::as_ref).collect()
     }
 }
 

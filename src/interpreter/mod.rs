@@ -60,6 +60,10 @@ use crate::interpreter::app::Application;
 use crate::interpreter::ast::expr::list::List;
 use crate::interpreter::ast::expr::object::Obj;
 use crate::interpreter::ast::expr::superclass::Super;
+use crate::interpreter::ast::stmt::buffer::Buffer;
+use crate::interpreter::ast::stmt::pipeline::Pipeline;
+use crate::interpreter::ast::stmt::render::Render;
+
 pub mod app;
 pub struct Interpreter {
     path: PathBuf,
@@ -666,7 +670,6 @@ impl StmtVisitor<Result<Object>> for Interpreter {
     fn visit_class(&mut self, class: &Class<Result<Object>>) -> Result<Object> {
         let (name, methods, superclass) = class.extract();
         if let Some(env) = self.env.clone() {
-            
 
             let superclass = if let Some(superclass) = superclass {
                 if let Object::Arc(rc) =  self.evaluate(superclass)? {
@@ -730,5 +733,49 @@ impl StmtVisitor<Result<Object>> for Interpreter {
 
     fn visit_use(&mut self, _stmt: &Use<Result<Object>>) -> Result<Object> {
         Ok(Object::Nil)
+    }
+
+    fn visit_pipeline(&mut self, stmt: &Pipeline<Result<Object>>) -> Result<Object> {
+        let (name, expr) = stmt.extract();
+        if let Some(env) = self.env.clone() {
+            let obj = self.evaluate(expr)?;
+            println!("Pipeline: {}", obj);
+
+            env.write().unwrap().define(name.get_lexeme(), Some(Object::Arc(rc!(obj))));
+            return Ok(Object::Nil);
+        }
+        Err(RuntimeError::new(name.clone(), RuntimeErrorType::BugEnvironmentNotInit).into())
+    }
+
+    fn visit_buffer(&mut self, stmt: &Buffer<Result<Object>>) -> Result<Object> {
+        let (name, expr) = stmt.extract();
+        if let Some(env) = self.env.clone() {
+            let obj = self.evaluate(expr)?;
+            println!("Buffer: {}", obj);
+
+            env.write().unwrap().define(name.get_lexeme(), Some(Object::Arc(rc!(obj))));
+            return Ok(Object::Nil);
+        }
+        Err(RuntimeError::new(name.clone(), RuntimeErrorType::BugEnvironmentNotInit).into())
+    }
+
+    fn visit_render(&mut self, render: &Render<Result<Object>>) -> Result<Object> {
+        let exprs = render.extract();
+        if let Some(env) = self.env.clone() {
+            let mut lists = Vec::new();
+            for expr in exprs {
+                if let Object::List(vec) = self.evaluate(expr)? {
+                    lists.push(Object::List(vec));
+                }
+            }
+            let lists = Object::List(lists);
+            println!("Render: {}", lists);
+
+            env.write().unwrap().define("__render__", Some(Object::Arc(rc!(lists))));
+            return Ok(Object::Nil);
+        }
+        Err(RuntimeError::new(Token::builtin_void(
+            TokenType::Identifier, "__render__", None
+        ), RuntimeErrorType::BugEnvironmentNotInit).into())
     }
 }
