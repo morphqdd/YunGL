@@ -5,7 +5,6 @@ use crate::interpreter::object::Object;
 use crate::interpreter::scanner::error::{ScannerError, ScannerErrorType};
 use crate::interpreter::scanner::token::Token;
 use crate::interpreter::scanner::token::token_type::TokenType;
-use downcast_rs::Downcast;
 use std::collections::HashMap;
 
 pub mod error;

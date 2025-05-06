@@ -54,6 +54,7 @@ impl Environment {
 
     pub fn get_at(env: Option<Arc<RwLock<Self>>>, distance: usize, name: &Token) -> Result<Object> {
         if let Some(environment) = Environment::ancestor(env, distance) {
+            //println!("{environment:?}");
             return environment.read().unwrap().get(name);
         }
         Err(RuntimeError::new(name.clone(), RuntimeErrorType::BugEnvironmentNotInit).into())
@@ -64,9 +65,12 @@ impl Environment {
         distance: usize,
     ) -> Option<Arc<RwLock<Environment>>> {
         let mut env = env.clone();
+        //println!("----------\nEnvironment: {:?}\n----------", env);
+        //println!("distance: {}", distance);
         for _ in 0..distance {
             if let Some(env_) = env.clone() {
                 env = env_.read().unwrap().enclosing.clone();
+                //println!("----------\nEnvironment: {:?}\n----------", env);
             }
         }
         env

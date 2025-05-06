@@ -1,10 +1,9 @@
 use crate::interpreter::Interpreter;
-use crate::interpreter::environment::Environment;
 use crate::interpreter::event::InterpreterEvent;
 use crate::interpreter::object::Object;
 use crate::interpreter::render_statement::RenderStatement;
 use crate::interpreter::render_statement::buffers_data::BuffersData;
-use crate::interpreter::render_statement::pipeline_data::PipelineData;
+use crate::interpreter::render_statement::pipeline_data::{AttributeLayouts, PipelineData};
 use crate::interpreter::render_statement::uniform_generator::UniformGenerator;
 use glium::glutin::surface::WindowSurface;
 use glium::index::{NoIndices, PrimitiveType};
@@ -21,7 +20,6 @@ use std::sync::{Arc, Mutex, RwLock};
 pub struct App {
     window: Arc<Window>,
     display: Arc<Display<WindowSurface>>,
-    proxy: EventLoopProxy<InterpreterEvent>,
     render_statement: Option<RenderStatement>,
     interpreter: Arc<Mutex<Interpreter>>,
     uniform_generator: Arc<RwLock<UniformGenerator>>,
@@ -38,7 +36,6 @@ impl App {
             window,
             display,
             interpreter: Arc::new(Mutex::new(Interpreter::new(proxy.clone(), path_buf))),
-            proxy,
             render_statement: None,
             uniform_generator: Arc::new(RwLock::new(UniformGenerator::new())),
         }
@@ -49,7 +46,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
     fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
         match cause {
             StartCause::Init => {
-                let mut interpreter = self.interpreter.clone();
+                let interpreter = self.interpreter.clone();
                 std::thread::spawn(move || {
                     if let Err(err) = interpreter.lock().unwrap().run_script() {
                         println!("{}", err);
@@ -80,18 +77,10 @@ impl ApplicationHandler<InterpreterEvent> for App {
                     continue;
                 };
 
-                // Fast access to attributes
-                let attributes = match pipeline.get_field(ObjString(ATTRIBUTES.into())) {
-                    Some(Dictionary(attrs)) => attrs,
-                    _ => HashMap::new(),
-                };
-
-                // Uniform object
                 let uniform = pipeline
                     .get_field(ObjString(UNIFORM.into()))
                     .unwrap_or(Dictionary(HashMap::new()));
 
-                // Vertex layout and keys
                 let layout_list = match vertex.get_field(ObjString(LAYOUT.into())) {
                     Some(List(layout)) => layout,
                     _ => continue,
@@ -105,13 +94,15 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         layout.push(s.clone());
                         match s.as_str() {
                             "vec2" => keys.extend(["x", "y"]),
+                            "vec3" => keys.extend(["x", "y", "z"]),
                             "uv" => keys.extend(["u", "v"]),
+                            "normal" => keys.extend(["nx", "ny", "nz"]),
+                            "color" => keys.extend(["r", "g", "b"]),
                             _ => {}
                         }
                     }
                 }
 
-                // Vertex data
                 let data_list = match vertex.get_field(ObjString(DATA.into())) {
                     Some(List(data)) => data,
                     _ => continue,
@@ -130,29 +121,58 @@ impl ApplicationHandler<InterpreterEvent> for App {
                     }
                 }
 
-                // Convert attributes to String/String only if needed
-                let attributes = attributes
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.to_string()))
-                    .collect::<HashMap<String, String>>();
+                let raw_attrs = match pipeline.get_field(ObjString(ATTRIBUTES.into())) {
+                    Some(Dictionary(m)) => m,
+                    _ => HashMap::new(),
+                };
 
-                // Precompiled uniform + shader + vertex buffer
+                // 2. Соберём inputs и outputs
+                let mut attrs_in = HashMap::new();
+                let mut attrs_out = HashMap::new();
+
+                // Входные
+                if let Some(Object::Dictionary(ins)) = raw_attrs.get("in") {
+                    for (name, typ_obj) in ins {
+                        if let Object::String(s) = typ_obj {
+                            attrs_in.insert(name.clone(), s.clone());
+                        }
+                    }
+                }
+                // Выходные
+                if let Some(Object::Dictionary(outs)) = raw_attrs.get("out") {
+                    for (name, typ_obj) in outs {
+                        if let Object::String(s) = typ_obj {
+                            attrs_out.insert(name.clone(), s.clone());
+                        }
+                    }
+                }
+
                 let uniforms = self
                     .uniform_generator
                     .write()
                     .unwrap()
-                    .generate_uniforms(&uniform, &self.display)
+                    .generate_uniforms(&uniform)
                     .expect("Failed to generate uniforms");
+
+                println!("DATA: {:?}", attrs_in);
 
                 let render_statement = RenderStatement::new(
                     &self.display,
                     PipelineData {
-                        attributes,
+                        attributes: AttributeLayouts {
+                            inputs: attrs_in,
+                            outputs: attrs_out,
+                        },
                         uniforms,
                     },
                     BuffersData { data, layout },
                 )
                 .expect("Failed to create render statement");
+
+                println!(
+                    "Vertex: {}\nFragment: {}",
+                    render_statement.vertex_shader, render_statement.fragment_shader
+                );
 
                 self.render_statement = Some(render_statement);
             }
@@ -184,13 +204,14 @@ impl ApplicationHandler<InterpreterEvent> for App {
                     target.finish().unwrap();
                 }
             }
+            WindowEvent::Resized(size) => self.display.resize(size.into()),
             _ => {}
         }
     }
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if self.render_statement.is_some() {
             self.window.request_redraw();
-            std::thread::sleep(std::time::Duration::from_millis(5));
+            std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
 }

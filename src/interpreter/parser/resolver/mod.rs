@@ -253,13 +253,11 @@ impl ExprVisitor<Result<Object>> for Resolver<'_> {
 
     fn visit_object(&mut self, object: &Obj<Result<Object>>) -> Result<Object> {
         let values = object.extract();
-        self.begin_scope();
         for (key, value) in values.clone() {
             self.declare(&key);
             self.resolve_expr(value.deref())?;
             self.define(&key);
         }
-        self.end_scope();
         Ok(Object::Nil)
     }
 }

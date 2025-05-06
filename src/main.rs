@@ -1,17 +1,15 @@
 use crate::cli::Cli;
 use clap::Parser;
 use glium::backend::glutin::SimpleWindowBuilder;
-use glium::winit::event_loop::{EventLoop, EventLoopBuilder};
+use glium::winit::event_loop::EventLoopBuilder;
 use std::sync::Arc;
 use yun_gl_lib::app::App;
-use yun_gl_lib::interpreter::Interpreter;
 use yun_gl_lib::interpreter::error::Result;
 use yun_gl_lib::interpreter::event::InterpreterEvent;
 use yun_gl_lib::rc;
 
 mod cli;
-#[cfg(test)]
-mod test;
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 

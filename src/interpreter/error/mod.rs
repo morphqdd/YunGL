@@ -7,7 +7,6 @@ use crate::interpreter::scanner::error::ScannerError;
 use crate::interpreter::scanner::token::Token;
 use glium::winit::error::EventLoopError;
 use glium::winit::event_loop::EventLoopClosed;
-use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::num::ParseFloatError;
 use thiserror::Error;

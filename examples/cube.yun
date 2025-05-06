@@ -1,0 +1,107 @@
+export class Cube {
+    init() {
+        self.pipeline = {
+            attributes: {
+                in: {
+                    position: "vec4",
+                    normal: "vec3"
+                },
+                out: {
+                    v_normal: "vec3"
+                }
+            },
+            uniform: {
+                color: { type: "vec3", value: [0.8, 1.0, 1.0] },
+                model: { type: "mat4", value: self._makeModel(0) }
+            },
+            primitive: "triangles"
+        };
+
+        self.vertices = {
+                    data: [
+                        { x:-0.5, y:-0.5, z: 0.5, nx: 0, ny: 0, nz: 1 },
+                        { x: 0.5, y:-0.5, z: 0.5, nx: 0, ny: 0, nz: 1 },
+                        { x: 0.5, y: 0.5, z: 0.5, nx: 0, ny: 0, nz: 1 },
+                        { x:-0.5, y:-0.5, z: 0.5, nx: 0, ny: 0, nz: 1 },
+                        { x: 0.5, y: 0.5, z: 0.5, nx: 0, ny: 0, nz: 1 },
+                        { x:-0.5, y: 0.5, z: 0.5, nx: 0, ny: 0, nz: 1 },
+
+                        { x: 0.5, y:-0.5, z:-0.5, nx: 0, ny: 0, nz:-1 },
+                        { x:-0.5, y:-0.5, z:-0.5, nx: 0, ny: 0, nz:-1 },
+                        { x:-0.5, y: 0.5, z:-0.5, nx: 0, ny: 0, nz:-1 },
+                        { x: 0.5, y:-0.5, z:-0.5, nx: 0, ny: 0, nz:-1 },
+                        { x:-0.5, y: 0.5, z:-0.5, nx: 0, ny: 0, nz:-1 },
+                        { x: 0.5, y: 0.5, z:-0.5, nx: 0, ny: 0, nz:-1 },
+
+                        { x: 0.5, y:-0.5, z: 0.5, nx: 1, ny: 0, nz: 0 },
+                        { x: 0.5, y:-0.5, z:-0.5, nx: 1, ny: 0, nz: 0 },
+                        { x: 0.5, y: 0.5, z:-0.5, nx: 1, ny: 0, nz: 0 },
+                        { x: 0.5, y:-0.5, z: 0.5, nx: 1, ny: 0, nz: 0 },
+                        { x: 0.5, y: 0.5, z:-0.5, nx: 1, ny: 0, nz: 0 },
+                        { x: 0.5, y: 0.5, z: 0.5, nx: 1, ny: 0, nz: 0 },
+
+                        { x:-0.5, y:-0.5, z:-0.5, nx:-1, ny: 0, nz: 0 },
+                        { x:-0.5, y:-0.5, z: 0.5, nx:-1, ny: 0, nz: 0 },
+                        { x:-0.5, y: 0.5, z: 0.5, nx:-1, ny: 0, nz: 0 },
+                        { x:-0.5, y:-0.5, z:-0.5, nx:-1, ny: 0, nz: 0 },
+                        { x:-0.5, y: 0.5, z: 0.5, nx:-1, ny: 0, nz: 0 },
+                        { x:-0.5, y: 0.5, z:-0.5, nx:-1, ny: 0, nz: 0 },
+
+                        { x:-0.5, y: 0.5, z: 0.5, nx: 0, ny: 1, nz: 0 },
+                        { x: 0.5, y: 0.5, z: 0.5, nx: 0, ny: 1, nz: 0 },
+                        { x: 0.5, y: 0.5, z:-0.5, nx: 0, ny: 1, nz: 0 },
+                        { x:-0.5, y: 0.5, z: 0.5, nx: 0, ny: 1, nz: 0 },
+                        { x: 0.5, y: 0.5, z:-0.5, nx: 0, ny: 1, nz: 0 },
+                        { x:-0.5, y: 0.5, z:-0.5, nx: 0, ny: 1, nz: 0 },
+
+                        { x:-0.5, y:-0.5, z:-0.5, nx: 0, ny:-1, nz: 0 },
+                        { x: 0.5, y:-0.5, z:-0.5, nx: 0, ny:-1, nz: 0 },
+                        { x: 0.5, y:-0.5, z: 0.5, nx: 0, ny:-1, nz: 0 },
+                        { x:-0.5, y:-0.5, z:-0.5, nx: 0, ny:-1, nz: 0 },
+                        { x: 0.5, y:-0.5, z: 0.5, nx: 0, ny:-1, nz: 0 },
+                        { x:-0.5, y:-0.5, z: 0.5, nx: 0, ny:-1, nz: 0 }
+                    ],
+                    layout: ["vec3", "normal"]
+                };
+    }
+
+    _makeModel(t) {
+        let c = cos(t);
+                let s = sin(t);
+                let a = 0.70710678;
+                let oc = 1 - c;
+                return [
+                    [ c + oc*0.5,   oc*0.5,     a*s, 0 ],
+                    [   oc*0.5,   c + oc*0.5,  -a*s, 0 ],
+                    [   -a*s,        a*s,        c,  0 ],
+                    [     0,          0,         0,  1 ]
+                ];
+    }
+
+    update(dt) {
+        self.pipeline = {
+                    attributes: {
+                        in: {
+                            position: "vec4",
+                            normal: "vec3"
+                        },
+                        out: {
+                            v_normal: "vec3"
+                        }
+                    },
+                    uniform: {
+                        color: { type: "vec3", value: [0.8, 1.0, 1.0] },
+                        model: { type: "mat4", value: self._makeModel(dt) }
+                    },
+                    primitive: "triangles"
+                };
+    }
+
+    getPipeline() {
+        return self.pipeline;
+    }
+
+    getVertices() {
+        return self.vertices;
+    }
+}

@@ -43,36 +43,22 @@ use crate::interpreter::event::InterpreterEvent;
 use crate::interpreter::exporter::Exporter;
 use crate::interpreter::parser::Parser;
 use crate::interpreter::parser::resolver::Resolver;
-use crate::interpreter::render_statement::RenderStatement;
-use crate::interpreter::render_statement::buffers_data::BuffersData;
-use crate::interpreter::render_statement::pipeline_data::PipelineData;
-use crate::interpreter::render_statement::uniform_generator::UniformGenerator;
 use crate::interpreter::scanner::Scanner;
 use crate::interpreter::scanner::token::Token;
 use crate::interpreter::scanner::token::token_type::TokenType;
-use crate::interpreter::shell::Shell;
 use crate::utils::next_id;
 use crate::{b, rc};
-use glium::backend::glutin::SimpleWindowBuilder;
-use glium::glutin::surface::WindowSurface;
-use glium::index::{NoIndices, PrimitiveType};
-use glium::uniforms::EmptyUniforms;
-use glium::winit::application::ApplicationHandler;
-use glium::winit::event::{Event, StartCause, WindowEvent};
-use glium::winit::event_loop::{ActiveEventLoop, EventLoopBuilder, EventLoopProxy};
-use glium::winit::window::{Window, WindowId};
-use glium::{Display, Surface};
+use glium::winit::event_loop::EventLoopProxy;
 use object::Object;
 use object::callable::Callable;
 use object::native_object::NativeObject;
 use std::collections::HashMap;
-use std::io::Write;
+use std::fs;
 use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::exit;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
-use std::{fs, io};
 
 #[derive(Clone)]
 pub struct Interpreter {
@@ -93,7 +79,7 @@ impl Interpreter {
                 next_id(),
                 None,
                 None,
-                rc!(|interpreter, args| {
+                rc!(|_, args| {
                     if let Object::Number(n) = args[0].clone() {
                         return Ok(Object::Number(n.sin()));
                     }
@@ -111,7 +97,7 @@ impl Interpreter {
                 next_id(),
                 None,
                 None,
-                rc!(|interpreter, args| {
+                rc!(|_, args| {
                     if let Object::Number(n) = args[0].clone() {
                         return Ok(Object::Number(n.cos()));
                     }
@@ -135,7 +121,7 @@ impl Interpreter {
                         .proxy
                         .send_event(InterpreterEvent::Render(args[0].clone()))?;
                     //println!("Event sent");
-                    std::thread::sleep(Duration::from_millis(16));
+                    std::thread::sleep(Duration::from_millis(10));
                     Ok(Object::Nil)
                 }),
                 rc!(|| 1),
@@ -343,7 +329,10 @@ impl Interpreter {
     }
 
     fn look_up_variable(&mut self, name: Token, var: &dyn Expr<Result<Object>>) -> Result<Object> {
+        //println!("look_up_variable {}", name);
         if let Some(distance) = self.locals.read().unwrap().get(&var.id()).cloned() {
+            //println!("distance: {}", distance);
+            //println!("locals: {:?}", self.locals);
             Environment::get_at(self.env.clone(), distance, &name)
         } else {
             if let Some(globals) = self.globals.clone() {
@@ -532,7 +521,9 @@ impl ExprVisitor<Result<Object>> for Interpreter {
 
     fn visit_get(&mut self, get: &Get<Result<Object>>) -> Result<Object> {
         let (name, obj) = get.extract();
+        //println!("{name}");
         let obj = self.evaluate(obj)?;
+        //println!("Eval");
         if let Object::Instance(instance) = obj {
             return instance.get(name);
         }

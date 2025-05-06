@@ -2,16 +2,11 @@ use crate::interpreter::error::{InterpreterError, Result};
 use crate::interpreter::render_statement::buffers_data::BuffersData;
 use crate::interpreter::render_statement::pipeline_data::PipelineData;
 use crate::interpreter::render_statement::shader_generator::ShaderGenerator;
-use crate::interpreter::render_statement::uniform_generator::{UniformValueWrapper, load_texture};
+use crate::interpreter::render_statement::uniform_generator::UniformValueWrapper;
 use crate::interpreter::render_statement::vertex::{Vertex, create_vertex_buffer};
 use glium::glutin::surface::WindowSurface;
-use glium::texture::SrgbTexture2d;
-use glium::uniforms::{AsUniformValue, EmptyUniforms, Uniforms, UniformsStorage};
-use glium::{Display, Program, Texture2d, VertexBuffer, uniform};
-use image::{ImageFormat, load};
-use std::collections::HashMap;
-use std::io::Cursor;
-use std::sync::Arc;
+use glium::uniforms::{EmptyUniforms, UniformsStorage};
+use glium::{Display, Program, VertexBuffer, uniform};
 
 const DEFAULT_MATRIX: [[f32; 4]; 4] = [
     [1.0, 0.0, 0.0, 0.0],
@@ -72,7 +67,6 @@ impl RenderStatement {
                 display,
                 &buffers_data.data[..],
                 &buffers_data.layout,
-                &pipeline_data.attributes,
             )?,
             uniforms: uniform! {
                 time: uniform_values

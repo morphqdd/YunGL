@@ -1,39 +1,13 @@
-use "triangle";
-
-let triangle = Triangle();
+use "cube";
 
 let a = 0;
+
+let cube = Cube();
 
 while true {
     a = a + 0.01;
     render([
-        [
-            {
-                attributes: {
-                    position: "vec4"
-                },
-                uniform: {
-                    color: { type: "vec3", value: [0.7, 0.4, 1.0] },
-                    model: {
-                        type: "mat4",
-                        value: [
-                            [cos(a), sin(a), 0, 0],
-                            [-sin(a), cos(a), 0, 0],
-                            [0, 0, 1, 0],
-                            [0, 0, 0, 1]
-                        ]
-                    }
-                },
-                primitive: "triangles"
-            },
-            {
-                data: [
-                    { x: 0.6, y: 0.5 },
-                    { x: -0.2, y: -0.5 },
-                    { x: 0.5, y: -0.5 }
-                ],
-                layout: ["vec2"]
-            }
-        ]
+        [cube.getPipeline(), cube.getVertices()]
     ]);
+    cube.update(a);
 }

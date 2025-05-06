@@ -1,15 +1,10 @@
-use crate::interpreter::ast::stmt::Stmt;
-use crate::interpreter::environment::Environment;
 use crate::interpreter::error::{InterpreterError, Result};
 use crate::interpreter::object::Object;
 use glium::glutin::surface::WindowSurface;
-use glium::texture::{RawImage2d, SrgbTexture2d};
-use glium::uniforms::{AsUniformValue, UniformValue, UniformsStorage};
-use glium::{Display, Texture2d, uniform};
-use image::{ImageFormat, RgbImage, RgbaImage, load};
+use glium::texture::RawImage2d;
+use glium::{Display, Texture2d};
+use image::RgbaImage;
 use std::collections::HashMap;
-use std::fs::read_to_string;
-use std::sync::{Arc, RwLock};
 
 #[derive(Clone, Debug)]
 pub enum UniformValueWrapper {
@@ -57,6 +52,11 @@ impl UniformGenerator {
                 Object::Number(1.0),
             ]),
         ];
+
+        let matrix = Object::Dictionary(HashMap::from([
+            ("type".to_string(), Object::String("mat4".to_string())),
+            ("value".to_string(), Object::List(identity_matrix.clone())),
+        ]));
         Object::Dictionary(HashMap::from([
             (
                 "time".to_string(),
@@ -79,27 +79,9 @@ impl UniformGenerator {
                     ),
                 ])),
             ),
-            (
-                "model".to_string(),
-                Object::Dictionary(HashMap::from([
-                    ("type".to_string(), Object::String("mat4".to_string())),
-                    ("value".to_string(), Object::List(identity_matrix.clone())),
-                ])),
-            ),
-            (
-                "view".to_string(),
-                Object::Dictionary(HashMap::from([
-                    ("type".to_string(), Object::String("mat4".to_string())),
-                    ("value".to_string(), Object::List(identity_matrix.clone())),
-                ])),
-            ),
-            (
-                "projection".to_string(),
-                Object::Dictionary(HashMap::from([
-                    ("type".to_string(), Object::String("mat4".to_string())),
-                    ("value".to_string(), Object::List(identity_matrix)),
-                ])),
-            ),
+            ("model".to_string(), matrix.clone()),
+            ("view".to_string(), matrix.clone()),
+            ("projection".to_string(), matrix.clone()),
             (
                 "light_position".to_string(),
                 Object::Dictionary(HashMap::from([
@@ -119,7 +101,6 @@ impl UniformGenerator {
     pub fn generate_uniforms(
         &mut self,
         uniforms: &Object,
-        display: &Display<WindowSurface>,
     ) -> Result<HashMap<String, UniformValueWrapper>> {
         let user_uniforms = match uniforms {
             Object::Dictionary(dict) => dict,
@@ -134,7 +115,7 @@ impl UniformGenerator {
         };
 
         let mut uniform_values = HashMap::new();
-        let mut merged_uniforms = common_uniforms;
+        let merged_uniforms = common_uniforms;
         merged_uniforms.extend(user_uniforms.iter().map(|(k, v)| (k.clone(), v.clone())));
 
         for (name, uniform) in merged_uniforms {
