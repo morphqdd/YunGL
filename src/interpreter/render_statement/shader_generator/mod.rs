@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::interpreter::render_statement::uniform_generator::UniformValueWrapper;
+use std::collections::HashMap;
 
 pub struct ShaderGenerator;
 
@@ -15,26 +15,25 @@ impl ShaderGenerator {
             shader.push_str(&format!("in {} {};\n", attr_type, name));
         }
 
-        // Генерируем uniforms для матриц
-        // for (name, uniform_type) in uniforms {
-        //     if let UniformValueWrapper::Mat4(_) = uniform_type {
-        //         shader.push_str(&format!("uniform {} {};\n", "mat4", name));
-        //     }
-        // }
+        for (name, uniform_type) in uniforms {
+            if let UniformValueWrapper::Mat4(_) = uniform_type {
+                shader.push_str(&format!("uniform {} {};\n", "mat4", name));
+            }
+        }
 
         // Основная функция
         shader.push_str("void main() {\n");
         let position_type = String::from("vec4");
-        //let position_type = attributes.get("position").unwrap_or(&position_type);
-        // let transform = if uniforms.contains_key("model")
-        //     && uniforms.contains_key("view")
-        //     && uniforms.contains_key("projection")
-        // {
-        //     "projection * view * model * "
-        // } else {
-        //     ""
-        // };
-        let transform = String::from("");
+        let position_type = attributes.get("position").unwrap_or(&position_type);
+        let transform = if uniforms.contains_key("model")
+            && uniforms.contains_key("view")
+            && uniforms.contains_key("projection")
+        {
+            "projection * view * model * "
+        } else {
+            ""
+        };
+        //let transform = String::from("");
         match position_type.as_str() {
             "vec2" => shader.push_str(&format!(
                 "    gl_Position = {}vec4(position, 0.0, 1.0);\n",

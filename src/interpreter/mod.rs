@@ -481,10 +481,8 @@ impl ApplicationHandler<InterpreterEvent> for Interpreter {
                         .map(|(k, v)| (k, v.to_string()))
                         .collect::<HashMap<String, String>>();
 
-                    let uniforms = if let Ok(uniforms) =
-                        UniformGenerator::generate_uniforms(&uniform, &self.display) {
-                        uniforms
-                    } else { HashMap::new() };
+                    let uniforms =
+                        UniformGenerator::generate_uniforms(&uniform, &self.display).unwrap();
 
                     let render_statement = RenderStatement::new(
                         &self.display,

@@ -24,22 +24,30 @@ pub struct UniformGenerator;
 impl UniformGenerator {
     fn default_common_uniforms() -> Object {
         let identity_matrix = vec![
-            Object::Number(1.0),
-            Object::Number(0.0),
-            Object::Number(0.0),
-            Object::Number(0.0),
-            Object::Number(0.0),
-            Object::Number(1.0),
-            Object::Number(0.0),
-            Object::Number(0.0),
-            Object::Number(0.0),
-            Object::Number(0.0),
-            Object::Number(1.0),
-            Object::Number(0.0),
-            Object::Number(0.0),
-            Object::Number(0.0),
-            Object::Number(0.0),
-            Object::Number(1.0),
+            Object::List(vec![
+                Object::Number(1.0),
+                Object::Number(0.0),
+                Object::Number(0.0),
+                Object::Number(0.0),
+            ]),
+            Object::List(vec![
+                Object::Number(0.0),
+                Object::Number(1.0),
+                Object::Number(0.0),
+                Object::Number(0.0),
+            ]),
+            Object::List(vec![
+                Object::Number(0.0),
+                Object::Number(0.0),
+                Object::Number(1.0),
+                Object::Number(0.0),
+            ]),
+            Object::List(vec![
+                Object::Number(0.0),
+                Object::Number(0.0),
+                Object::Number(0.0),
+                Object::Number(1.0),
+            ]),
         ];
         Object::Dictionary(HashMap::from([
             (
@@ -102,7 +110,7 @@ impl UniformGenerator {
     }
     pub fn generate_uniforms(
         uniforms: &Object,
-        display: &glium::Display<WindowSurface>,
+        display: &Display<WindowSurface>,
     ) -> Result<HashMap<String, UniformValueWrapper>> {
         let user_uniforms = match uniforms {
             Object::Dictionary(dict) => dict,
@@ -183,14 +191,26 @@ impl UniformGenerator {
                 }
                 "mat4" => {
                     let mat4_value = match value {
-                        Object::List(list) if list.len() == 16 => {
+                        Object::List(list) => {
+                            println!("list: {:?}", list);
                             let mut arr = [[0.0f32; 4]; 4];
                             for (i, item) in list.iter().enumerate() {
-                                arr[i / 4][i % 4] = match item {
-                                    Object::Number(n) => *n as f32,
+                                arr[i] = match item {
+                                    Object::List(n) => {
+                                        let mut buffer = [0.0f32; 4];
+                                        for (i, obj) in n.iter().enumerate() {
+                                            buffer[i] = if let Object::Number(n) = obj {
+                                                *n as f32
+                                            } else {
+                                                0.0f32
+                                            };
+                                        }
+                                        println!("{:?}", buffer);
+                                        buffer
+                                    }
                                     _ => {
                                         return Err(InterpreterError::Custom(
-                                            "Mat4 value must be numbers or callable".into(),
+                                            "Mat4 value must be list".into(),
                                         ));
                                     }
                                 };
@@ -199,10 +219,13 @@ impl UniformGenerator {
                         }
                         _ => {
                             return Err(InterpreterError::Custom(
-                                "Mat4 value must be a list of 16 numbers or callable".into(),
+                                "Mat4 value must be a matrix 4x4".into(),
                             ));
                         }
                     };
+
+                    println!("mat4: {:?}", mat4_value);
+
                     uniform_values.insert(name, UniformValueWrapper::Mat4(mat4_value));
                 }
                 "sampler2D" => {
@@ -242,7 +265,7 @@ impl UniformGenerator {
             }
         }
 
-        println!("{:?}", uniform_values);
+        println!("----UNIFORMS: {:?}", uniform_values);
 
         Ok(uniform_values)
     }

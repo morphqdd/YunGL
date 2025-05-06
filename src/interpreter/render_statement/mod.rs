@@ -13,6 +13,13 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::Arc;
 
+const DEFAULT_MATRIX: [[f32; 4]; 4] = [
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+];
+
 pub mod buffers_data;
 pub mod pipeline_data;
 pub mod shader_generator;
@@ -73,38 +80,23 @@ impl RenderStatement {
             .get("model")
             .map(|v| match v {
                 UniformValueWrapper::Mat4(m) => *m,
-                _ => [[1.0, 0.0, 0.0, 0.0]; 4],
+                _ => DEFAULT_MATRIX,
             })
-            .unwrap_or([
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ]);
+            .unwrap_or(DEFAULT_MATRIX);
         let view = uniform_values
             .get("view")
             .map(|v| match v {
                 UniformValueWrapper::Mat4(m) => *m,
-                _ => [[1.0, 0.0, 0.0, 0.0]; 4],
+                _ => DEFAULT_MATRIX,
             })
-            .unwrap_or([
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ]);
+            .unwrap_or(DEFAULT_MATRIX);
         let projection = uniform_values
             .get("projection")
             .map(|v| match v {
                 UniformValueWrapper::Mat4(m) => *m,
-                _ => [[1.0, 0.0, 0.0, 0.0]; 4],
+                _ => DEFAULT_MATRIX,
             })
-            .unwrap_or([
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ]);
+            .unwrap_or(DEFAULT_MATRIX);
         let texture = uniform_values
             .get("texture")
             .map(|v| match v {
