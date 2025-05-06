@@ -5,7 +5,7 @@ export class Triangle {
                 position: "vec4"
             },
             uniform: {
-                color: { type: "vec3", value: [0.0, 0.7, 1.0] }
+                color: { type: "vec3", value: [0.7, 0.4, 1.0] }
             },
             primitive: "triangles"
         };

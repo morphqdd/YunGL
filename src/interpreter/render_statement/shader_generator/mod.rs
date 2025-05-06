@@ -1,11 +1,12 @@
 use std::collections::HashMap;
+use crate::interpreter::render_statement::uniform_generator::UniformValueWrapper;
 
 pub struct ShaderGenerator;
 
 impl ShaderGenerator {
     pub fn generate_vertex_shader(
         attributes: &HashMap<String, String>,
-        uniforms: &HashMap<String, String>,
+        uniforms: &HashMap<String, UniformValueWrapper>,
     ) -> String {
         let mut shader = String::from("#version 330 core\n");
 
@@ -15,24 +16,25 @@ impl ShaderGenerator {
         }
 
         // Генерируем uniforms для матриц
-        for (name, uniform_type) in uniforms {
-            if uniform_type == "mat4" {
-                shader.push_str(&format!("uniform {} {};\n", uniform_type, name));
-            }
-        }
+        // for (name, uniform_type) in uniforms {
+        //     if let UniformValueWrapper::Mat4(_) = uniform_type {
+        //         shader.push_str(&format!("uniform {} {};\n", "mat4", name));
+        //     }
+        // }
 
         // Основная функция
         shader.push_str("void main() {\n");
         let position_type = String::from("vec4");
         //let position_type = attributes.get("position").unwrap_or(&position_type);
-        let transform = if uniforms.contains_key("model")
-            && uniforms.contains_key("view")
-            && uniforms.contains_key("projection")
-        {
-            "projection * view * model * "
-        } else {
-            ""
-        };
+        // let transform = if uniforms.contains_key("model")
+        //     && uniforms.contains_key("view")
+        //     && uniforms.contains_key("projection")
+        // {
+        //     "projection * view * model * "
+        // } else {
+        //     ""
+        // };
+        let transform = String::from("");
         match position_type.as_str() {
             "vec2" => shader.push_str(&format!(
                 "    gl_Position = {}vec4(position, 0.0, 1.0);\n",
@@ -66,7 +68,7 @@ impl ShaderGenerator {
 
     pub fn generate_fragment_shader(
         attributes: &HashMap<String, String>,
-        uniforms: &HashMap<String, String>,
+        uniforms: &HashMap<String, UniformValueWrapper>,
     ) -> String {
         let mut shader = String::from("#version 330 core\n");
         let mut has_texture = false;
@@ -78,12 +80,16 @@ impl ShaderGenerator {
             shader.push_str("in vec3 v_normal;\n");
         }
         for (name, uniform_type) in uniforms {
-            if uniform_type == "sampler2D" {
-                has_texture = true;
-                shader.push_str(&format!("uniform sampler2D {};\n", name));
-            } else if uniform_type == "vec3" && name == "color" {
-                has_color = true;
-                shader.push_str("uniform vec3 color;\n");
+            match uniform_type {
+                UniformValueWrapper::Texture(_) => {
+                    has_texture = true;
+                    shader.push_str(&format!("uniform sampler2D {};\n", name));
+                }
+                UniformValueWrapper::Vec3(_) if name == "color" => {
+                    has_color = true;
+                    shader.push_str("uniform vec3 color;\n");
+                }
+                _ => {}
             }
         }
         shader.push_str("out vec4 out_color;\n");

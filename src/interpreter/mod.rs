@@ -481,8 +481,10 @@ impl ApplicationHandler<InterpreterEvent> for Interpreter {
                         .map(|(k, v)| (k, v.to_string()))
                         .collect::<HashMap<String, String>>();
 
-                    let uniforms =
-                        UniformGenerator::generate_uniforms(&uniform, &self.display).unwrap();
+                    let uniforms = if let Ok(uniforms) =
+                        UniformGenerator::generate_uniforms(&uniform, &self.display) {
+                        uniforms
+                    } else { HashMap::new() };
 
                     let render_statement = RenderStatement::new(
                         &self.display,
@@ -522,7 +524,7 @@ impl ApplicationHandler<InterpreterEvent> for Interpreter {
                             &render_statement.vertex_buffer,
                             &NoIndices(PrimitiveType::TriangleStrip),
                             &program,
-                            &EmptyUniforms,
+                            &render_statement.uniforms,
                             &Default::default(),
                         )
                         .unwrap();

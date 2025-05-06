@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::sync::{Arc, RwLock};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum UniformValueWrapper {
     Float(f32),
     Vec3([f32; 3]),
@@ -241,6 +241,8 @@ impl UniformGenerator {
                 }
             }
         }
+
+        println!("{:?}", uniform_values);
 
         Ok(uniform_values)
     }

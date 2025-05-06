@@ -142,11 +142,11 @@ impl RenderStatement {
         Ok(Self {
             vertex_shader: ShaderGenerator::generate_vertex_shader(
                 &pipeline_data.attributes,
-                &HashMap::new(),
+                &uniform_values,
             ),
             fragment_shader: ShaderGenerator::generate_fragment_shader(
                 &pipeline_data.attributes,
-                &HashMap::new(),
+                &uniform_values,
             ),
             vertex_buffer: create_vertex_buffer(
                 display,
