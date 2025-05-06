@@ -133,7 +133,7 @@ impl Object {
             let Object::String(key) = key else {
                 return None;
             };
-            return Some(map.get(&key).unwrap().clone());
+            return Some(map.get(&key).cloned().unwrap_or(Object::Nil));
         }
         if let Object::List(list) = self {
             let Object::Number(i) = key else { return None };

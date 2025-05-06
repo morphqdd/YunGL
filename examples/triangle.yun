@@ -4,6 +4,9 @@ export class Triangle {
             attributes: {
                 position: "vec4"
             },
+            uniform: {
+                color: { type: "vec3", value: [0.0, 0.7, 1.0] }
+            },
             primitive: "triangles"
         };
 

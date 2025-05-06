@@ -46,6 +46,7 @@ use crate::interpreter::parser::resolver::Resolver;
 use crate::interpreter::render_statement::RenderStatement;
 use crate::interpreter::render_statement::buffers_data::BuffersData;
 use crate::interpreter::render_statement::pipeline_data::PipelineData;
+use crate::interpreter::render_statement::uniform_generator::UniformGenerator;
 use crate::interpreter::scanner::Scanner;
 use crate::interpreter::scanner::token::Token;
 use crate::interpreter::scanner::token::token_type::TokenType;
@@ -255,12 +256,6 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn run_test(mut self, path: &PathBuf) -> Result<()> {
-        let code = fs::read_to_string(path).unwrap();
-        self.run(&code)?;
-        Ok(())
-    }
-
     fn run(&mut self, code: &str) -> Result<()> {
         let mut scanner = Scanner::new(code);
         let tokens = scanner.scan_tokens()?;
@@ -270,7 +265,9 @@ impl Interpreter {
 
         let ast = Exporter::new(self.path.clone(), ast).resolve()?;
 
-        Resolver::new(self).resolve(ast.iter().map(AsRef::as_ref).collect())?;
+        let mut resolver = Resolver::new(self);
+
+        resolver.resolve(ast.iter().map(AsRef::as_ref).collect())?;
 
         let res = self.interpret(ast)?;
 
@@ -416,12 +413,43 @@ impl ApplicationHandler<InterpreterEvent> for Interpreter {
                 for elm in list {
                     let pipeline = elm.get_field(Object::Number(0.0)).unwrap();
                     let vertex = elm.get_field(Object::Number(1.0)).unwrap();
-                    let Object::Dictionary(attributes) = pipeline
+
+                    let attributes = if let Object::Dictionary(attributes) = pipeline
                         .get_field(Object::String("attributes".into()))
+                        .unwrap_or(Object::Dictionary(HashMap::new()))
+                    {
+                        attributes
+                    } else {
+                        HashMap::new()
+                    };
+
+                    let uniform = pipeline
+                        .get_field(Object::String("uniform".into()))
+                        .unwrap_or(Object::Dictionary(HashMap::new()));
+
+                    let Object::List(layout) = vertex
+                        .get_field(Object::String("layout".into()))
                         .unwrap_or(Object::Dictionary(HashMap::new()))
                     else {
                         return;
                     };
+
+                    let mut keys = vec![];
+
+                    let layout = layout
+                        .into_iter()
+                        .map(|obj| {
+                            let Object::String(string) = obj else {
+                                panic!("Expected string")
+                            };
+                            match string.as_str() {
+                                "vec2" => keys.append(&mut vec!["x", "y"]),
+                                "uv" => keys.append(&mut vec!["u", "v"]),
+                                _ => {}
+                            }
+                            string
+                        })
+                        .collect::<Vec<_>>();
 
                     let Object::List(data) = vertex
                         .get_field(Object::String("data".into()))
@@ -436,43 +464,32 @@ impl ApplicationHandler<InterpreterEvent> for Interpreter {
                             let Object::Dictionary(fields) = obj else {
                                 panic!("Expected dictionary");
                             };
-                            fields
-                                .into_iter()
-                                .map(|(_, obj)| {
-                                    let Object::Number(num) = obj else {
+                            keys.iter()
+                                .map(|&key| {
+                                    let Object::Number(n) = fields.get(key).unwrap().clone() else {
                                         panic!("Expected number")
                                     };
-                                    num as f32
+                                    n as f32
                                 })
                                 .collect::<Vec<_>>()
                         })
                         .collect::<Vec<_>>()
                         .concat();
 
-                    let Object::List(layout) = vertex
-                        .get_field(Object::String("layout".into()))
-                        .unwrap_or(Object::Dictionary(HashMap::new()))
-                    else {
-                        return;
-                    };
-
-                    let layout = layout
-                        .into_iter()
-                        .map(|obj| {
-                            let Object::String(string) = obj else {
-                                panic!("Expected string")
-                            };
-                            string
-                        })
-                        .collect::<Vec<_>>();
-
                     let attributes = attributes
                         .into_iter()
                         .map(|(k, v)| (k, v.to_string()))
                         .collect::<HashMap<String, String>>();
+
+                    let uniforms =
+                        UniformGenerator::generate_uniforms(&uniform, &self.display).unwrap();
+
                     let render_statement = RenderStatement::new(
                         &self.display,
-                        PipelineData { attributes },
+                        PipelineData {
+                            attributes,
+                            uniforms,
+                        },
                         BuffersData { data, layout },
                     )
                     .unwrap();
@@ -517,7 +534,8 @@ impl ApplicationHandler<InterpreterEvent> for Interpreter {
     }
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if self.render_statement.is_some() {
-            self.window.request_redraw()
+            self.window.request_redraw();
+            std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
 }
