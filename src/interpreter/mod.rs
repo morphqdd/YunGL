@@ -70,29 +70,58 @@ use std::io::Write;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::exit;
-use std::sync::{Arc, RwLock};
-use std::time::Instant;
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant};
 use std::{fs, io};
 
+#[derive(Clone)]
 pub struct Interpreter {
-    window: Window,
-    display: Display<WindowSurface>,
     proxy: EventLoopProxy<InterpreterEvent>,
-    render_statement: Option<RenderStatement>,
-    path: PathBuf,
+    path: Arc<PathBuf>,
     env: Option<Arc<RwLock<Environment>>>,
     globals: Option<Arc<RwLock<Environment>>>,
-    locals: HashMap<u64, usize>,
+    locals: Arc<RwLock<HashMap<u64, usize>>>,
 }
 
 impl Interpreter {
-    pub fn new(
-        window: Window,
-        display: Display<WindowSurface>,
-        proxy: EventLoopProxy<InterpreterEvent>,
-        path: PathBuf,
-    ) -> Self {
+    pub fn new(proxy: EventLoopProxy<InterpreterEvent>, path: PathBuf) -> Self {
         let mut globals = Environment::default();
+
+        globals.define(
+            "sin",
+            Some(Object::Callable(Callable::build(
+                next_id(),
+                None,
+                None,
+                rc!(|interpreter, args| {
+                    if let Object::Number(n) = args[0].clone() {
+                        return Ok(Object::Number(n.sin()));
+                    }
+                    Ok(Object::Nil)
+                }),
+                rc!(|| 1),
+                rc!(|| "sin".into()),
+                false,
+            ))),
+        );
+
+        globals.define(
+            "cos",
+            Some(Object::Callable(Callable::build(
+                next_id(),
+                None,
+                None,
+                rc!(|interpreter, args| {
+                    if let Object::Number(n) = args[0].clone() {
+                        return Ok(Object::Number(n.cos()));
+                    }
+                    Ok(Object::Nil)
+                }),
+                rc!(|| 1),
+                rc!(|| "cos".into()),
+                false,
+            ))),
+        );
 
         globals.define(
             "render",
@@ -101,9 +130,12 @@ impl Interpreter {
                 None,
                 None,
                 rc!(|interpreter, args| {
+                    //println!("Call");
                     interpreter
                         .proxy
                         .send_event(InterpreterEvent::Render(args[0].clone()))?;
+                    //println!("Event sent");
+                    std::thread::sleep(Duration::from_millis(16));
                     Ok(Object::Nil)
                 }),
                 rc!(|| 1),
@@ -240,18 +272,15 @@ impl Interpreter {
         let globals = Arc::new(RwLock::new(globals));
 
         Self {
-            window,
-            display,
             proxy,
-            render_statement: None,
-            path,
+            path: Arc::new(path),
             env: Some(globals.clone()),
             globals: Some(globals),
             locals: Default::default(),
         }
     }
     pub fn run_script(&mut self) -> Result<()> {
-        let code = fs::read_to_string(&self.path).unwrap();
+        let code = fs::read_to_string(self.path.as_ref()).unwrap();
         self.run(&code)?;
         Ok(())
     }
@@ -263,13 +292,13 @@ impl Interpreter {
         let mut parser: Parser<Result<Object>> = Parser::new(tokens);
         let ast = parser.parse()?;
 
-        let ast = Exporter::new(self.path.clone(), ast).resolve()?;
+        let ast = Exporter::new(self.path.as_ref().clone(), ast).resolve()?;
 
         let mut resolver = Resolver::new(self);
 
         resolver.resolve(ast.iter().map(AsRef::as_ref).collect())?;
 
-        let res = self.interpret(ast)?;
+        self.interpret(ast)?;
 
         Ok(())
     }
@@ -310,12 +339,12 @@ impl Interpreter {
 
     #[inline]
     pub fn resolve(&mut self, expr: Box<dyn Expr<Result<Object>>>, depth: usize) {
-        self.locals.insert(expr.id(), depth);
+        self.locals.write().unwrap().insert(expr.id(), depth);
     }
 
     fn look_up_variable(&mut self, name: Token, var: &dyn Expr<Result<Object>>) -> Result<Object> {
-        if let Some(distance) = self.locals.get(&var.id()) {
-            Environment::get_at(self.env.clone(), *distance, &name)
+        if let Some(distance) = self.locals.read().unwrap().get(&var.id()).cloned() {
+            Environment::get_at(self.env.clone(), distance, &name)
         } else {
             if let Some(globals) = self.globals.clone() {
                 return globals.read().unwrap().get(&name);
@@ -389,157 +418,6 @@ impl Interpreter {
     }
 }
 
-impl ApplicationHandler<InterpreterEvent> for Interpreter {
-    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
-        match cause {
-            StartCause::Init => {
-                if let Err(err) = self.run_script() {
-                    println!("{}", err);
-                    exit(65);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn resumed(&mut self, _event_loop: &ActiveEventLoop) {}
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: InterpreterEvent) {
-        match event {
-            InterpreterEvent::Render(object) => {
-                println!("{:?}", object);
-                let Object::List(list) = object else {
-                    return;
-                };
-                for elm in list {
-                    let pipeline = elm.get_field(Object::Number(0.0)).unwrap();
-                    let vertex = elm.get_field(Object::Number(1.0)).unwrap();
-
-                    let attributes = if let Object::Dictionary(attributes) = pipeline
-                        .get_field(Object::String("attributes".into()))
-                        .unwrap_or(Object::Dictionary(HashMap::new()))
-                    {
-                        attributes
-                    } else {
-                        HashMap::new()
-                    };
-
-                    let uniform = pipeline
-                        .get_field(Object::String("uniform".into()))
-                        .unwrap_or(Object::Dictionary(HashMap::new()));
-
-                    let Object::List(layout) = vertex
-                        .get_field(Object::String("layout".into()))
-                        .unwrap_or(Object::Dictionary(HashMap::new()))
-                    else {
-                        return;
-                    };
-
-                    let mut keys = vec![];
-
-                    let layout = layout
-                        .into_iter()
-                        .map(|obj| {
-                            let Object::String(string) = obj else {
-                                panic!("Expected string")
-                            };
-                            match string.as_str() {
-                                "vec2" => keys.append(&mut vec!["x", "y"]),
-                                "uv" => keys.append(&mut vec!["u", "v"]),
-                                _ => {}
-                            }
-                            string
-                        })
-                        .collect::<Vec<_>>();
-
-                    let Object::List(data) = vertex
-                        .get_field(Object::String("data".into()))
-                        .unwrap_or(Object::Dictionary(HashMap::new()))
-                    else {
-                        return;
-                    };
-
-                    let data = data
-                        .into_iter()
-                        .map(|obj| {
-                            let Object::Dictionary(fields) = obj else {
-                                panic!("Expected dictionary");
-                            };
-                            keys.iter()
-                                .map(|&key| {
-                                    let Object::Number(n) = fields.get(key).unwrap().clone() else {
-                                        panic!("Expected number")
-                                    };
-                                    n as f32
-                                })
-                                .collect::<Vec<_>>()
-                        })
-                        .collect::<Vec<_>>()
-                        .concat();
-
-                    let attributes = attributes
-                        .into_iter()
-                        .map(|(k, v)| (k, v.to_string()))
-                        .collect::<HashMap<String, String>>();
-
-                    let uniforms =
-                        UniformGenerator::generate_uniforms(&uniform, &self.display).unwrap();
-
-                    let render_statement = RenderStatement::new(
-                        &self.display,
-                        PipelineData {
-                            attributes,
-                            uniforms,
-                        },
-                        BuffersData { data, layout },
-                    )
-                    .unwrap();
-                    println!(
-                        "Vertex: {}\nFragment: {}",
-                        render_statement.vertex_shader, render_statement.fragment_shader
-                    );
-                    self.render_statement = Some(render_statement);
-                }
-            }
-            InterpreterEvent::None => {}
-        }
-    }
-
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _window_id: WindowId,
-        event: WindowEvent,
-    ) {
-        match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::RedrawRequested => {
-                if let Some(render_statement) = &self.render_statement {
-                    let program = render_statement.build_program(&self.display).unwrap();
-                    let mut target = self.display.draw();
-                    target.clear_color(0.0, 0.0, 0.0, 1.0);
-                    target
-                        .draw(
-                            &render_statement.vertex_buffer,
-                            &NoIndices(PrimitiveType::TriangleStrip),
-                            &program,
-                            &render_statement.uniforms,
-                            &Default::default(),
-                        )
-                        .unwrap();
-                    target.finish().unwrap();
-                }
-            }
-            _ => {}
-        }
-    }
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if self.render_statement.is_some() {
-            self.window.request_redraw();
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-    }
-}
-
 impl ExprVisitor<Result<Object>> for Interpreter {
     fn visit_binary(&mut self, binary: &Binary<Result<Object>>) -> Result<Object> {
         let left = self.evaluate(binary.get_left())?;
@@ -596,8 +474,14 @@ impl ExprVisitor<Result<Object>> for Interpreter {
     fn visit_assign(&mut self, assign: &Assign<Result<Object>>) -> Result<Object> {
         let value = self.evaluate(assign.get_value())?;
         let name = assign.get_token();
-        if let Some(distance) = self.locals.get(&assign.clone_expr().id()) {
-            Environment::assign_at(self.env.clone(), *distance, &name, value)
+        if let Some(distance) = self
+            .locals
+            .read()
+            .unwrap()
+            .get(&assign.clone_expr().id())
+            .cloned()
+        {
+            Environment::assign_at(self.env.clone(), distance, &name, value)
         } else {
             if let Some(globals) = self.globals.clone() {
                 return globals.write().unwrap().assign(&name, value);
@@ -674,9 +558,12 @@ impl ExprVisitor<Result<Object>> for Interpreter {
         let (keyword, method_name) = super_val.extract();
         let distance = self
             .locals
+            .read()
+            .unwrap()
             .get(&<Super as Expr<Result<Object>>>::id(super_val))
-            .unwrap();
-        let superclass = Environment::get_at(self.env.clone(), *distance, &keyword)?;
+            .unwrap()
+            .clone();
+        let superclass = Environment::get_at(self.env.clone(), distance, &keyword)?;
         let instance = Environment::get_at(
             self.env.clone(),
             1,

@@ -69,7 +69,7 @@ pub fn create_vertex_buffer(
             normal,
         });
     }
-    println!("{:?}", vertex_data);
+    //println!("{:?}", vertex_data);
 
     VertexBuffer::new(display, &vertex_data).map_err(|e| e.to_string().into())
 }

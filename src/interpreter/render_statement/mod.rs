@@ -26,23 +26,19 @@ pub mod shader_generator;
 pub mod uniform_generator;
 pub mod vertex;
 
-pub type UniformType<'n> = UniformsStorage<
-    'n,
+pub type UniformStore<'a> = UniformsStorage<
+    'a,
     [f32; 3],
     UniformsStorage<
-        'n,
-        &'n Texture2d,
+        'a,
+        [[f32; 4]; 4],
         UniformsStorage<
-            'n,
+            'a,
             [[f32; 4]; 4],
             UniformsStorage<
-                'n,
+                'a,
                 [[f32; 4]; 4],
-                UniformsStorage<
-                    'n,
-                    [[f32; 4]; 4],
-                    UniformsStorage<'n, [f32; 3], UniformsStorage<'n, f32, EmptyUniforms>>,
-                >,
+                UniformsStorage<'a, [f32; 3], UniformsStorage<'a, f32, EmptyUniforms>>,
             >,
         >,
     >,
@@ -52,7 +48,7 @@ pub struct RenderStatement {
     pub vertex_shader: String,
     pub fragment_shader: String,
     pub vertex_buffer: VertexBuffer<Vertex>,
-    pub uniforms: UniformType<'static>,
+    pub uniforms: UniformStore<'static>,
 }
 
 impl RenderStatement {
@@ -62,74 +58,6 @@ impl RenderStatement {
         buffers_data: BuffersData,
     ) -> Result<Self> {
         let uniform_values = pipeline_data.uniforms;
-        let time = uniform_values
-            .get("time")
-            .map(|v| match v {
-                UniformValueWrapper::Float(f) => *f,
-                _ => 0.0,
-            })
-            .unwrap_or(0.0);
-        let color = uniform_values
-            .get("color")
-            .map(|v| match v {
-                UniformValueWrapper::Vec3(v) => *v,
-                _ => [1.0, 1.0, 1.0],
-            })
-            .unwrap_or([1.0, 1.0, 1.0]);
-        let model = uniform_values
-            .get("model")
-            .map(|v| match v {
-                UniformValueWrapper::Mat4(m) => *m,
-                _ => DEFAULT_MATRIX,
-            })
-            .unwrap_or(DEFAULT_MATRIX);
-        let view = uniform_values
-            .get("view")
-            .map(|v| match v {
-                UniformValueWrapper::Mat4(m) => *m,
-                _ => DEFAULT_MATRIX,
-            })
-            .unwrap_or(DEFAULT_MATRIX);
-        let projection = uniform_values
-            .get("projection")
-            .map(|v| match v {
-                UniformValueWrapper::Mat4(m) => *m,
-                _ => DEFAULT_MATRIX,
-            })
-            .unwrap_or(DEFAULT_MATRIX);
-        let texture = uniform_values
-            .get("texture")
-            .map(|v| match v {
-                UniformValueWrapper::Texture(t) => t.clone(),
-                _ => Box::leak(Box::new(
-                    load_texture(
-                        display,
-                        load(
-                            Cursor::new(include_bytes!("../../../assets/skate_board_kat.jpg")),
-                            ImageFormat::Jpeg,
-                        )
-                        .unwrap()
-                        .to_rgba8(),
-                    )
-                    .unwrap(),
-                )),
-            })
-            .unwrap_or(Box::leak(Box::new(load_texture(
-                display,
-                load(
-                    Cursor::new(include_bytes!("../../../assets/skate_board_kat.jpg")),
-                    ImageFormat::Jpeg,
-                )
-                .unwrap()
-                .to_rgba8(),
-            )?)));
-        let light_position = uniform_values
-            .get("light_position")
-            .map(|v| match v {
-                UniformValueWrapper::Vec3(v) => *v,
-                _ => [0.0, 0.0, 5.0],
-            })
-            .unwrap_or([0.0, 0.0, 5.0]);
 
         Ok(Self {
             vertex_shader: ShaderGenerator::generate_vertex_shader(
@@ -147,13 +75,48 @@ impl RenderStatement {
                 &pipeline_data.attributes,
             )?,
             uniforms: uniform! {
-                time: time,
-                color: color,
-                model: model,
-                view: view,
-                projection: projection,
-                texture: texture,
-                light_position: light_position
+                time: uniform_values
+                    .get("time")
+                    .map(|v| match v {
+                        UniformValueWrapper::Float(f) => *f,
+                        _ => 0.0,
+                    })
+                    .unwrap_or(0.0),
+                color: uniform_values
+                    .get("color")
+                    .map(|v| match v {
+                        UniformValueWrapper::Vec3(v) => *v,
+                        _ => [1.0, 1.0, 1.0],
+                    })
+                    .unwrap_or([1.0, 1.0, 1.0]),
+                model: uniform_values
+                    .get("model")
+                    .map(|v| match v {
+                        UniformValueWrapper::Mat4(m) => *m,
+                        _ => DEFAULT_MATRIX,
+                    })
+                    .unwrap_or(DEFAULT_MATRIX),
+                view: uniform_values
+                    .get("view")
+                    .map(|v| match v {
+                        UniformValueWrapper::Mat4(m) => *m,
+                        _ => DEFAULT_MATRIX,
+                    })
+                    .unwrap_or(DEFAULT_MATRIX),
+                projection: uniform_values
+                    .get("projection")
+                    .map(|v| match v {
+                        UniformValueWrapper::Mat4(m) => *m,
+                        _ => DEFAULT_MATRIX,
+                    })
+                    .unwrap_or(DEFAULT_MATRIX),
+                light_position: uniform_values
+                    .get("light_position")
+                    .map(|v| match v {
+                        UniformValueWrapper::Vec3(v) => *v,
+                        _ => [0.0, 0.0, 5.0],
+                    })
+                    .unwrap_or([0.0, 0.0, 5.0])
             },
         })
     }

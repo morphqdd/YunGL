@@ -560,7 +560,7 @@ where
             } else {
                 return Err(ParserError::new(self.peek(), ParserErrorType::ExpectedKey).into());
             };
-            println!("{name}");
+            //println!("{name}");
             self.consume(TokenType::Colon, ParserErrorType::ExpectedColon)?;
             let value = self.expression()?;
             values.insert(name, value);

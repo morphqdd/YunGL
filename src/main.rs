@@ -2,9 +2,12 @@ use crate::cli::Cli;
 use clap::Parser;
 use glium::backend::glutin::SimpleWindowBuilder;
 use glium::winit::event_loop::{EventLoop, EventLoopBuilder};
+use std::sync::Arc;
+use yun_gl_lib::app::App;
 use yun_gl_lib::interpreter::Interpreter;
 use yun_gl_lib::interpreter::error::Result;
 use yun_gl_lib::interpreter::event::InterpreterEvent;
+use yun_gl_lib::rc;
 
 mod cli;
 #[cfg(test)]
@@ -18,11 +21,11 @@ fn main() -> Result<()> {
         .with_title("App")
         .build(&event_loop);
 
-    let mut interpreter = Interpreter::new(
-        window,
-        display,
+    let mut app = App::new(
+        rc!(window),
+        rc!(display),
         event_loop.create_proxy(),
         cli.get_path().clone(),
     );
-    Ok(event_loop.run_app(&mut interpreter)?)
+    Ok(event_loop.run_app(&mut app)?)
 }

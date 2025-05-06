@@ -19,9 +19,17 @@ pub enum UniformValueWrapper {
     Texture(&'static Texture2d),
 }
 
-pub struct UniformGenerator;
+pub struct UniformGenerator {
+    default: Object,
+}
 
 impl UniformGenerator {
+    pub(crate) fn new() -> Self {
+        Self {
+            default: Self::default_common_uniforms(),
+        }
+    }
+
     fn default_common_uniforms() -> Object {
         let identity_matrix = vec![
             Object::List(vec![
@@ -109,6 +117,7 @@ impl UniformGenerator {
         ]))
     }
     pub fn generate_uniforms(
+        &mut self,
         uniforms: &Object,
         display: &Display<WindowSurface>,
     ) -> Result<HashMap<String, UniformValueWrapper>> {
@@ -120,14 +129,12 @@ impl UniformGenerator {
                 ));
             }
         };
-        let common_uniforms = Self::default_common_uniforms();
-        let common_uniforms_dict = match common_uniforms {
-            Object::Dictionary(dict) => dict,
-            _ => unreachable!(),
+        let Object::Dictionary(common_uniforms) = &mut self.default else {
+            panic!("Expected dictionary")
         };
 
         let mut uniform_values = HashMap::new();
-        let mut merged_uniforms = common_uniforms_dict.clone();
+        let mut merged_uniforms = common_uniforms;
         merged_uniforms.extend(user_uniforms.iter().map(|(k, v)| (k.clone(), v.clone())));
 
         for (name, uniform) in merged_uniforms {
@@ -163,7 +170,7 @@ impl UniformGenerator {
                             ));
                         }
                     };
-                    uniform_values.insert(name, UniformValueWrapper::Float(float_value));
+                    uniform_values.insert(name.clone(), UniformValueWrapper::Float(float_value));
                 }
                 "vec3" => {
                     let vec3_value = match value {
@@ -187,12 +194,12 @@ impl UniformGenerator {
                             ));
                         }
                     };
-                    uniform_values.insert(name, UniformValueWrapper::Vec3(vec3_value));
+                    uniform_values.insert(name.clone(), UniformValueWrapper::Vec3(vec3_value));
                 }
                 "mat4" => {
                     let mat4_value = match value {
                         Object::List(list) => {
-                            println!("list: {:?}", list);
+                            //println!("list: {:?}", list);
                             let mut arr = [[0.0f32; 4]; 4];
                             for (i, item) in list.iter().enumerate() {
                                 arr[i] = match item {
@@ -205,7 +212,7 @@ impl UniformGenerator {
                                                 0.0f32
                                             };
                                         }
-                                        println!("{:?}", buffer);
+                                        //println!("{:?}", buffer);
                                         buffer
                                     }
                                     _ => {
@@ -224,38 +231,38 @@ impl UniformGenerator {
                         }
                     };
 
-                    println!("mat4: {:?}", mat4_value);
+                    //println!("mat4: {:?}", mat4_value);
 
-                    uniform_values.insert(name, UniformValueWrapper::Mat4(mat4_value));
+                    uniform_values.insert(name.clone(), UniformValueWrapper::Mat4(mat4_value));
                 }
-                "sampler2D" => {
-                    let texture_path = match value {
-                        Object::String(s) => s,
-                        _ => {
-                            return Err(InterpreterError::Custom(
-                                "Sampler2D value must be a string".into(),
-                            ));
-                        }
-                    };
-                    let format = if texture_path.ends_with(".png") {
-                        ImageFormat::Png
-                    } else if texture_path.ends_with(".jpg") || texture_path.ends_with(".jpeg") {
-                        ImageFormat::Jpeg
-                    } else {
-                        return Err(InterpreterError::Custom("Unsupported format".into()));
-                    };
-                    let image = load(
-                        std::io::Cursor::new(&read_to_string(texture_path).unwrap().as_bytes()),
-                        ImageFormat::Png,
-                    )
-                    .unwrap()
-                    .to_rgba8();
-                    let texture = load_texture(display, image)?;
-                    uniform_values.insert(
-                        name,
-                        UniformValueWrapper::Texture(Box::leak(Box::new(texture))),
-                    );
-                }
+                // "sampler2D" => {
+                //     let texture_path = match value {
+                //         Object::String(s) => s,
+                //         _ => {
+                //             return Err(InterpreterError::Custom(
+                //                 "Sampler2D value must be a string".into(),
+                //             ));
+                //         }
+                //     };
+                //     let format = if texture_path.ends_with(".png") {
+                //         ImageFormat::Png
+                //     } else if texture_path.ends_with(".jpg") || texture_path.ends_with(".jpeg") {
+                //         ImageFormat::Jpeg
+                //     } else {
+                //         return Err(InterpreterError::Custom("Unsupported format".into()));
+                //     };
+                //     let image = load(
+                //         std::io::Cursor::new(&read_to_string(texture_path).unwrap().as_bytes()),
+                //         ImageFormat::Png,
+                //     )
+                //     .unwrap()
+                //     .to_rgba8();
+                //     let texture = load_texture(display, image)?;
+                //     uniform_values.insert(
+                //         name,
+                //         UniformValueWrapper::Texture(Box::leak(Box::new(texture))),
+                //     );
+                // }
                 _ => {
                     return Err(InterpreterError::Custom(format!(
                         "Unsupported uniform type: {}",
@@ -265,7 +272,7 @@ impl UniformGenerator {
             }
         }
 
-        println!("----UNIFORMS: {:?}", uniform_values);
+        //println!("----UNIFORMS: {:?}", uniform_values);
 
         Ok(uniform_values)
     }
