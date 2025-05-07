@@ -7,6 +7,7 @@ use crate::interpreter::render_statement::vertex::{Vertex, create_vertex_buffer}
 use glium::glutin::surface::WindowSurface;
 use glium::uniforms::{EmptyUniforms, UniformsStorage};
 use glium::{Display, Program, VertexBuffer, uniform};
+use glium::index::PrimitiveType;
 
 const DEFAULT_MATRIX: [[f32; 4]; 4] = [
     [1.0, 0.0, 0.0, 0.0],
@@ -44,6 +45,7 @@ pub struct RenderStatement {
     pub fragment_shader: String,
     pub vertex_buffer: VertexBuffer<Vertex>,
     pub uniforms: UniformStore<'static>,
+    pub primitive_type: PrimitiveType
 }
 
 impl RenderStatement {
@@ -51,6 +53,7 @@ impl RenderStatement {
         display: &Display<WindowSurface>,
         pipeline_data: PipelineData,
         buffers_data: BuffersData,
+        primitive: String
     ) -> Result<Self> {
         let uniform_values = pipeline_data.uniforms;
 
@@ -111,6 +114,12 @@ impl RenderStatement {
                         _ => [0.0, 0.0, 5.0],
                     })
                     .unwrap_or([0.0, 0.0, 5.0])
+            },
+            primitive_type: match primitive.as_str() {
+                "points" => PrimitiveType::Points,
+                "lineStrip" => PrimitiveType::LineStrip,
+                "triangleStrip" => PrimitiveType::TriangleStrip,
+                _ => PrimitiveType::TriangleStrip,
             },
         })
     }

@@ -13,9 +13,17 @@ use glium::winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use glium::winit::window::{Window, WindowId};
 use glium::{Display, Surface};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::ops::Deref;
+use std::path::{Path, PathBuf};
 use std::process::exit;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{mpsc, Arc, Mutex, RwLock};
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::Receiver;
+use std::time::Duration;
+use notify::{Event, EventKind, RecursiveMode, Watcher, RecommendedWatcher};
+use notify_debouncer_mini::{new_debouncer, DebounceEventResult, DebouncedEvent, Debouncer};
+use crate::interpreter::object::Object::String;
+use crate::rc;
 
 pub struct App {
     window: Arc<Window>,
@@ -23,6 +31,9 @@ pub struct App {
     render_statement: Option<RenderStatement>,
     interpreter: Arc<Mutex<Interpreter>>,
     uniform_generator: Arc<RwLock<UniformGenerator>>,
+    path: Arc<PathBuf>,
+    watcher: Arc<Debouncer<RecommendedWatcher>>,
+    rx: Arc<Mutex<Receiver<()>>>,
 }
 
 impl App {
@@ -30,14 +41,31 @@ impl App {
         window: Arc<Window>,
         display: Arc<Display<WindowSurface>>,
         proxy: EventLoopProxy<InterpreterEvent>,
-        path_buf: PathBuf,
+        path: PathBuf,
     ) -> Self {
+        let path_arc = rc!(path.clone());
+        let (tx, rx) = mpsc::channel();
+        let mut debouncer = new_debouncer(
+            Duration::from_millis(100),
+            move |event: DebounceEventResult| {
+                match event {
+                    Ok(_) => {
+                        tx.send(()).unwrap();
+                    }
+                    Err(_) => {}
+                }
+            }
+        ).unwrap();
+        debouncer.watcher().watch(&path, RecursiveMode::NonRecursive).unwrap();
         Self {
             window,
             display,
-            interpreter: Arc::new(Mutex::new(Interpreter::new(proxy.clone(), path_buf))),
+            interpreter: rc!(Mutex::new(Interpreter::new(proxy.clone(), path.clone()))),
             render_statement: None,
-            uniform_generator: Arc::new(RwLock::new(UniformGenerator::new())),
+            uniform_generator: rc!(RwLock::new(UniformGenerator::new())),
+            path: path_arc,
+            watcher: rc!(debouncer),
+            rx: rc!(Mutex::new(rx)),
         }
     }
 }
@@ -47,13 +75,33 @@ impl ApplicationHandler<InterpreterEvent> for App {
         match cause {
             StartCause::Init => {
                 let interpreter = self.interpreter.clone();
+                let rx = self.rx.clone();
+                let flag = interpreter.lock().unwrap().get_cancel_flag();
                 std::thread::spawn(move || {
-                    if let Err(err) = interpreter.lock().unwrap().run_script() {
-                        println!("{}", err);
-                        exit(65);
+                    loop {
+                        let mut interpreter = interpreter.lock().unwrap();
+                        match interpreter.run_script() {
+                            Ok(_) => {
+                                if interpreter.get_cancel_flag().load(Ordering::Relaxed) {
+                                    interpreter.get_cancel_flag().swap(false, Ordering::Relaxed);
+                                    continue;
+                                }
+                                return;
+                            },
+                            Err(err) => {
+                                println!("{}", err);
+                                exit(65);
+                            }
+                        }
                     }
+
                 });
-                //println!("Init ended")
+
+                std::thread::spawn(move || {
+                   while rx.lock().unwrap().recv().is_ok() {
+                       flag.swap(true, Ordering::Relaxed);
+                   }
+                });
             }
             _ => {}
         }
@@ -67,6 +115,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
         const UNIFORM: &str = "uniform";
         const LAYOUT: &str = "layout";
         const DATA: &str = "data";
+        const PRIMITIVE: &str = "primitive";
 
         if let InterpreterEvent::Render(List(list)) = event {
             for elm in list {
@@ -131,7 +180,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                 let mut attrs_out = HashMap::new();
 
                 // Входные
-                if let Some(Object::Dictionary(ins)) = raw_attrs.get("in") {
+                if let Some(Dictionary(ins)) = raw_attrs.get("in") {
                     for (name, typ_obj) in ins {
                         if let Object::String(s) = typ_obj {
                             attrs_in.insert(name.clone(), s.clone());
@@ -139,7 +188,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                     }
                 }
                 // Выходные
-                if let Some(Object::Dictionary(outs)) = raw_attrs.get("out") {
+                if let Some(Dictionary(outs)) = raw_attrs.get("out") {
                     for (name, typ_obj) in outs {
                         if let Object::String(s) = typ_obj {
                             attrs_out.insert(name.clone(), s.clone());
@@ -154,7 +203,12 @@ impl ApplicationHandler<InterpreterEvent> for App {
                     .generate_uniforms(&uniform)
                     .expect("Failed to generate uniforms");
 
-                println!("DATA: {:?}", attrs_in);
+                let primitive = match pipeline.get_field(ObjString(PRIMITIVE.into())) {
+                    Some(String(m)) => m,
+                    _ => "triangleStrip".into(),
+                };
+
+                //println!("DATA: {:?}", attrs_in);
 
                 let render_statement = RenderStatement::new(
                     &self.display,
@@ -166,13 +220,14 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         uniforms,
                     },
                     BuffersData { data, layout },
+                    primitive
                 )
                 .expect("Failed to create render statement");
 
-                println!(
-                    "Vertex: {}\nFragment: {}",
-                    render_statement.vertex_shader, render_statement.fragment_shader
-                );
+                // println!(
+                //     "Vertex: {}\nFragment: {}",
+                //     render_statement.vertex_shader, render_statement.fragment_shader
+                // );
 
                 self.render_statement = Some(render_statement);
             }
@@ -195,7 +250,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                     target
                         .draw(
                             &render_statement.vertex_buffer,
-                            &NoIndices(PrimitiveType::TriangleStrip),
+                            &NoIndices(render_statement.primitive_type),
                             &program,
                             &render_statement.uniforms,
                             &Default::default(),

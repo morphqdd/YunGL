@@ -58,6 +58,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::process::exit;
 use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 #[derive(Clone)]
@@ -67,6 +68,7 @@ pub struct Interpreter {
     env: Option<Arc<RwLock<Environment>>>,
     globals: Option<Arc<RwLock<Environment>>>,
     locals: Arc<RwLock<HashMap<u64, usize>>>,
+    cancel_flag: Arc<AtomicBool>,
 }
 
 impl Interpreter {
@@ -263,6 +265,7 @@ impl Interpreter {
             env: Some(globals.clone()),
             globals: Some(globals),
             locals: Default::default(),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
         }
     }
     pub fn run_script(&mut self) -> Result<()> {
@@ -297,6 +300,10 @@ impl Interpreter {
         Ok(res)
     }
 
+    pub fn get_cancel_flag(&self) -> Arc<AtomicBool> {
+        self.cancel_flag.clone()
+    }
+
     fn execute_block(
         &mut self,
         statements: Vec<&dyn Stmt<Result<Object>>>,
@@ -315,11 +322,17 @@ impl Interpreter {
 
     #[inline]
     fn execute(&mut self, statement: &dyn Stmt<Result<Object>>) -> Result<Object> {
+        if self.cancel_flag.load(Ordering::Relaxed) {
+            return Ok(Object::Nil)
+        }
         statement.accept(self)
     }
 
     #[inline]
     fn evaluate(&mut self, expr: &dyn Expr<Result<Object>>) -> Result<Object> {
+        if self.cancel_flag.load(Ordering::Relaxed) {
+            return Ok(Object::Nil)
+        }
         expr.accept(self)
     }
 

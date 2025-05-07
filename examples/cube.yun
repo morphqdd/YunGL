@@ -14,7 +14,7 @@ export class Cube {
                 color: { type: "vec3", value: [0.8, 1.0, 1.0] },
                 model: { type: "mat4", value: self._makeModel(0) }
             },
-            primitive: "triangles"
+            primitive: "lineStrip"
         };
 
         self.vertices = {
@@ -90,10 +90,10 @@ export class Cube {
                         }
                     },
                     uniform: {
-                        color: { type: "vec3", value: [0.8, 1.0, 1.0] },
+                        color: { type: "vec3", value: [cos(dt*0.1)+0.4, sin(dt*0.1)+0.3, cos(dt)*sin(dt)] },
                         model: { type: "mat4", value: self._makeModel(dt) }
                     },
-                    primitive: "triangles"
+                    primitive: "lineStrip"
                 };
     }
 

@@ -13,3 +13,5 @@ downcast-rs = "2.0.1"
 glium = {version = "0.36.0", features = ["winit"]}
 ordered-float = "5.0.0"
 image = "0.25.6"
+notify = "8.0.0"
+notify-debouncer-mini = "0.6.0"
