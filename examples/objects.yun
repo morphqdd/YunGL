@@ -1,7 +1,7 @@
 let b = 10;
 let a = {
     "key": "value",
-    1: b,
+    _1: b,
     second_key: "value",
     obj: {
         some_key: "some_val"
@@ -16,5 +16,10 @@ let list = {
         ]
 };
 
+a.secondKey = "TRASH";
+
 print a;
+print a.key;
+print a._1;
+print a.obj;
 print list;

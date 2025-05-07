@@ -1,29 +1,29 @@
 use crate::interpreter::Interpreter;
 use crate::interpreter::event::InterpreterEvent;
 use crate::interpreter::object::Object;
+use crate::interpreter::object::Object::String;
 use crate::interpreter::render_statement::RenderStatement;
 use crate::interpreter::render_statement::buffers_data::BuffersData;
 use crate::interpreter::render_statement::pipeline_data::{AttributeLayouts, PipelineData};
 use crate::interpreter::render_statement::uniform_generator::UniformGenerator;
+use crate::rc;
 use glium::glutin::surface::WindowSurface;
 use glium::index::{NoIndices, PrimitiveType};
 use glium::winit::application::ApplicationHandler;
 use glium::winit::event::{StartCause, WindowEvent};
 use glium::winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use glium::winit::window::{Window, WindowId};
-use glium::{Display, Surface};
+use glium::{Depth, DepthTest, Display, DrawParameters, Surface};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify_debouncer_mini::{DebounceEventResult, DebouncedEvent, Debouncer, new_debouncer};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::exit;
-use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex, RwLock, mpsc};
 use std::time::Duration;
-use notify::{Event, EventKind, RecursiveMode, Watcher, RecommendedWatcher};
-use notify_debouncer_mini::{new_debouncer, DebounceEventResult, DebouncedEvent, Debouncer};
-use crate::interpreter::object::Object::String;
-use crate::rc;
 
 pub struct App {
     window: Arc<Window>,
@@ -47,16 +47,18 @@ impl App {
         let (tx, rx) = mpsc::channel();
         let mut debouncer = new_debouncer(
             Duration::from_millis(100),
-            move |event: DebounceEventResult| {
-                match event {
-                    Ok(_) => {
-                        tx.send(()).unwrap();
-                    }
-                    Err(_) => {}
+            move |event: DebounceEventResult| match event {
+                Ok(_) => {
+                    tx.send(()).unwrap();
                 }
-            }
-        ).unwrap();
-        debouncer.watcher().watch(&path, RecursiveMode::NonRecursive).unwrap();
+                Err(_) => {}
+            },
+        )
+        .unwrap();
+        debouncer
+            .watcher()
+            .watch(&path, RecursiveMode::NonRecursive)
+            .unwrap();
         Self {
             window,
             display,
@@ -87,20 +89,19 @@ impl ApplicationHandler<InterpreterEvent> for App {
                                     continue;
                                 }
                                 return;
-                            },
+                            }
                             Err(err) => {
                                 println!("{}", err);
                                 exit(65);
                             }
                         }
                     }
-
                 });
 
                 std::thread::spawn(move || {
-                   while rx.lock().unwrap().recv().is_ok() {
-                       flag.swap(true, Ordering::Relaxed);
-                   }
+                    while rx.lock().unwrap().recv().is_ok() {
+                        flag.swap(true, Ordering::Relaxed);
+                    }
                 });
             }
             _ => {}
@@ -118,7 +119,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
         const PRIMITIVE: &str = "primitive";
 
         if let InterpreterEvent::Render(List(list)) = event {
-            for elm in list {
+            for elm in list.read().unwrap().iter() {
                 let Some(pipeline) = elm.get_field(Number(0.0)) else {
                     continue;
                 };
@@ -128,17 +129,19 @@ impl ApplicationHandler<InterpreterEvent> for App {
 
                 let uniform = pipeline
                     .get_field(ObjString(UNIFORM.into()))
-                    .unwrap_or(Dictionary(HashMap::new()));
+                    .unwrap_or(Dictionary(rc!(RwLock::new(HashMap::new()))));
 
                 let layout_list = match vertex.get_field(ObjString(LAYOUT.into())) {
                     Some(List(layout)) => layout,
                     _ => continue,
                 };
 
+                let layout_list = layout_list.read().unwrap();
+
                 let mut layout = Vec::with_capacity(layout_list.len());
                 let mut keys = Vec::with_capacity(layout_list.len() * 2);
 
-                for obj in layout_list {
+                for obj in layout_list.iter() {
                     if let ObjString(s) = obj {
                         layout.push(s.clone());
                         match s.as_str() {
@@ -157,12 +160,14 @@ impl ApplicationHandler<InterpreterEvent> for App {
                     _ => continue,
                 };
 
+                let data_list = data_list.read().unwrap();
+
                 let mut data = Vec::with_capacity(data_list.len() * keys.len());
 
-                for obj in data_list {
+                for obj in data_list.iter() {
                     if let Dictionary(fields) = obj {
                         for &key in &keys {
-                            match fields.get(key) {
+                            match fields.read().unwrap().get(key) {
                                 Some(Number(n)) => data.push(*n as f32),
                                 _ => panic!("Expected number for key {}", key),
                             }
@@ -172,7 +177,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
 
                 let raw_attrs = match pipeline.get_field(ObjString(ATTRIBUTES.into())) {
                     Some(Dictionary(m)) => m,
-                    _ => HashMap::new(),
+                    _ => rc!(RwLock::new(HashMap::new())),
                 };
 
                 // 2. Соберём inputs и outputs
@@ -180,17 +185,17 @@ impl ApplicationHandler<InterpreterEvent> for App {
                 let mut attrs_out = HashMap::new();
 
                 // Входные
-                if let Some(Dictionary(ins)) = raw_attrs.get("in") {
-                    for (name, typ_obj) in ins {
-                        if let Object::String(s) = typ_obj {
+                if let Some(Dictionary(ins)) = raw_attrs.read().unwrap().get("in") {
+                    for (name, typ_obj) in ins.read().unwrap().iter() {
+                        if let String(s) = typ_obj {
                             attrs_in.insert(name.clone(), s.clone());
                         }
                     }
                 }
                 // Выходные
-                if let Some(Dictionary(outs)) = raw_attrs.get("out") {
-                    for (name, typ_obj) in outs {
-                        if let Object::String(s) = typ_obj {
+                if let Some(Dictionary(outs)) = raw_attrs.read().unwrap().get("out") {
+                    for (name, typ_obj) in outs.read().unwrap().iter() {
+                        if let String(s) = typ_obj {
                             attrs_out.insert(name.clone(), s.clone());
                         }
                     }
@@ -220,7 +225,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         uniforms,
                     },
                     BuffersData { data, layout },
-                    primitive
+                    primitive,
                 )
                 .expect("Failed to create render statement");
 
@@ -246,14 +251,22 @@ impl ApplicationHandler<InterpreterEvent> for App {
                 if let Some(render_statement) = &self.render_statement {
                     let program = render_statement.build_program(&self.display).unwrap();
                     let mut target = self.display.draw();
-                    target.clear_color(0.0, 0.0, 0.0, 1.0);
+                    target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
                     target
                         .draw(
                             &render_statement.vertex_buffer,
                             &NoIndices(render_statement.primitive_type),
                             &program,
                             &render_statement.uniforms,
-                            &Default::default(),
+                            &DrawParameters {
+                                depth: Depth {
+                                    test: DepthTest::IfLessOrEqual,
+                                    write: true,
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            },
+                            //&Default::default(),
                         )
                         .unwrap();
                     target.finish().unwrap();

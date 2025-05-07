@@ -3,7 +3,7 @@ use crate::interpreter::ast::expr::Expr;
 use crate::interpreter::ast::expr::assignment::Assign;
 use crate::interpreter::ast::expr::binary::Binary;
 use crate::interpreter::ast::expr::call::Call;
-use crate::interpreter::ast::expr::get::Get;
+use crate::interpreter::ast::expr::get::{Get, GetType};
 use crate::interpreter::ast::expr::grouping::Grouping;
 use crate::interpreter::ast::expr::list::List;
 use crate::interpreter::ast::expr::literal::Literal;
@@ -355,8 +355,8 @@ where
             }
 
             if let Some(expr) = expr.downcast_ref::<Get<T>>() {
-                let (name, obj) = expr.extract();
-                return Ok(b!(Set::new(name.clone(), obj.clone_expr(), value)));
+                let (ty, obj) = expr.extract();
+                return Ok(b!(Set::new(ty.clone().into(), obj.clone_expr(), value)));
             }
 
             return Err(ParserError::new(token, ParserErrorType::InvalidAssignmentTarget).into());
@@ -462,7 +462,11 @@ where
                     TokenType::Identifier,
                     ParserErrorType::ExpectedPropertyAfterDot,
                 )?;
-                expr = b!(Get::new(name, expr))
+                expr = b!(Get::new(GetType::Name(name), expr))
+            } else if self._match(vec![TokenType::LeftBracket]) {
+                let index = self.expression()?;
+                let token = self.consume(TokenType::RightBracket, ParserErrorType::ExpectedRightBracket)?;
+                expr = b!(Get::new(GetType::Index(token, index), expr))
             } else {
                 break;
             }

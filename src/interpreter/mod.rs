@@ -12,14 +12,14 @@ pub mod shell;
 use crate::interpreter::ast::expr::assignment::Assign;
 use crate::interpreter::ast::expr::binary::Binary;
 use crate::interpreter::ast::expr::call::Call;
-use crate::interpreter::ast::expr::get::Get;
+use crate::interpreter::ast::expr::get::{Get, GetType};
 use crate::interpreter::ast::expr::grouping::Grouping;
 use crate::interpreter::ast::expr::list::List;
 use crate::interpreter::ast::expr::literal::Literal;
 use crate::interpreter::ast::expr::logical::Logical;
 use crate::interpreter::ast::expr::object::Obj;
 use crate::interpreter::ast::expr::self_expr::SelfExpr;
-use crate::interpreter::ast::expr::set::Set;
+use crate::interpreter::ast::expr::set::{Set, SetType};
 use crate::interpreter::ast::expr::superclass::Super;
 use crate::interpreter::ast::expr::unary::Unary;
 use crate::interpreter::ast::expr::variable::Variable;
@@ -57,8 +57,8 @@ use std::fs;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::process::exit;
-use std::sync::{Arc, RwLock};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 #[derive(Clone)]
@@ -128,26 +128,6 @@ impl Interpreter {
                 }),
                 rc!(|| 1),
                 rc!(|| "render".into()),
-                false,
-            ))),
-        );
-
-        globals.define(
-            "get",
-            Some(Object::Callable(Callable::build(
-                next_id(),
-                None,
-                None,
-                rc!(|_, args| -> Result<Object> {
-                    let list = args[0].clone();
-                    let index = args[1].clone();
-                    if let (Object::List(list), Object::Number(number)) = (list, index) {
-                        return Ok(list.get(number as usize).unwrap_or(&Object::Nil).clone());
-                    }
-                    Ok(Object::Nil)
-                }),
-                rc!(|| 2),
-                rc!(|| "get".into()),
                 false,
             ))),
         );
@@ -323,7 +303,7 @@ impl Interpreter {
     #[inline]
     fn execute(&mut self, statement: &dyn Stmt<Result<Object>>) -> Result<Object> {
         if self.cancel_flag.load(Ordering::Relaxed) {
-            return Ok(Object::Nil)
+            return Ok(Object::Nil);
         }
         statement.accept(self)
     }
@@ -331,7 +311,7 @@ impl Interpreter {
     #[inline]
     fn evaluate(&mut self, expr: &dyn Expr<Result<Object>>) -> Result<Object> {
         if self.cancel_flag.load(Ordering::Relaxed) {
-            return Ok(Object::Nil)
+            return Ok(Object::Nil);
         }
         expr.accept(self)
     }
@@ -533,25 +513,72 @@ impl ExprVisitor<Result<Object>> for Interpreter {
     }
 
     fn visit_get(&mut self, get: &Get<Result<Object>>) -> Result<Object> {
-        let (name, obj) = get.extract();
-        //println!("{name}");
+        let (ty, obj) = get.extract();
         let obj = self.evaluate(obj)?;
-        //println!("Eval");
-        if let Object::Instance(instance) = obj {
-            return instance.get(name);
+        match ty {
+            GetType::Name(name) => {
+                match obj {
+                    Object::Instance(instance) => return instance.get(name),
+                    Object::Dictionary(dict) => {
+                        return Ok(
+                            dict.read().unwrap()
+                                .get(name.get_lexeme())
+                                .unwrap_or(
+                                    dict.read().unwrap()
+                                        .get(&format!(r#""{}""#, name.get_lexeme()))
+                                        .unwrap_or(&Object::Nil)
+                                ).clone());
+                    }
+                    _ => {}
+                }
+                Err(RuntimeError::new(name.clone(), RuntimeErrorType::OnlyInstancesHaveProperties).into())
+            }
+            GetType::Index(token, index) => {
+                let Object::Number(index) = self.evaluate(index.clone().deref())?
+                else { return Err(RuntimeError::new(token.clone(), RuntimeErrorType::MustBeANumber).into()); };
+                let Object::List(_) = &obj
+                else { return Err(RuntimeError::new(token.clone(), RuntimeErrorType::OnlyListsHaveIndices).into()); };
+                Ok(obj.get_field(Object::Number(index)).unwrap())
+            }
         }
-        Err(RuntimeError::new(name.clone(), RuntimeErrorType::OnlyInstancesHaveProperties).into())
+        //println!("{name}");
+
+        //println!("Eval");
+
     }
 
     fn visit_set(&mut self, set: &Set<Result<Object>>) -> Result<Object> {
-        let (name, obj, value) = set.extract();
+        let (ty, obj, value) = set.extract();
         let obj = self.evaluate(obj)?;
-        if let Object::Instance(instance) = obj {
-            let value = self.evaluate(value)?;
-            instance.set(name, value.clone());
-            return Ok(value);
+
+        match ty {
+            SetType::Name(name) => {
+                match obj {
+                    Object::Instance(instance) => {
+                        let value = self.evaluate(value)?;
+                        instance.set(name, value.clone());
+                        return Ok(value);
+                    }
+                    Object::Dictionary(dict) => {
+                        let value = self.evaluate(value)?;
+                        dict.write().unwrap().insert(name.get_lexeme().into(), value.clone());
+                        return Ok(value)
+                    }
+                    _ => {}
+                }
+                Err(RuntimeError::new(name.clone(), RuntimeErrorType::OnlyInstancesHaveProperties).into())
+            }
+            SetType::Index(token, index) => {
+                let Object::Number(index) = self.evaluate(index.clone().deref())?
+                else { return Err(RuntimeError::new(token.clone(), RuntimeErrorType::MustBeANumber).into()); };
+                let Object::List(list) = &obj
+                else { return Err(RuntimeError::new(token.clone(), RuntimeErrorType::OnlyListsHaveIndices).into()); };
+                let value = self.evaluate(value)?;
+                list.write().unwrap()[index as usize] = value.clone();
+                Ok(value)
+            }
         }
-        Err(RuntimeError::new(name.clone(), RuntimeErrorType::OnlyInstancesHaveProperties).into())
+
     }
 
     fn visit_self(&mut self, self_val: &SelfExpr) -> Result<Object> {
@@ -597,7 +624,7 @@ impl ExprVisitor<Result<Object>> for Interpreter {
         for val in list.extract_values() {
             values.push(self.evaluate(val)?);
         }
-        Ok(Object::List(values))
+        Ok(Object::List(rc!(RwLock::new(values))))
     }
 
     fn visit_object(&mut self, object: &Obj<Result<Object>>) -> Result<Object> {
@@ -606,7 +633,7 @@ impl ExprVisitor<Result<Object>> for Interpreter {
         for (key, value) in values.clone() {
             obj.insert(key.get_lexeme().to_string(), self.evaluate(value.deref())?);
         }
-        Ok(Object::Dictionary(obj))
+        Ok(Object::Dictionary(rc!(RwLock::new(obj))))
     }
 }
 

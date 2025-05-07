@@ -5,10 +5,12 @@ let a = 0;
 
 let cube = Cube();
 
+let time = clock();
+
 while true {
     a = a + 0.01;
     render([
-        [cube.getPipeline(), cube.getVertices()]
+        [cube.pipeline, cube.vertices]
     ]);
     cube.update(a);
 }

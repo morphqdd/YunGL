@@ -33,8 +33,8 @@ pub enum Object {
     #[default]
     Nil,
     Void,
-    List(Vec<Object>),
-    Dictionary(HashMap<String, Object>),
+    List(Arc<RwLock<Vec<Object>>>),
+    Dictionary(Arc<RwLock<HashMap<String, Object>>>),
 }
 
 impl Eq for Object {}
@@ -54,9 +54,9 @@ impl Hash for Object {
             Arc(o) => o.hash(state),
             Nil => {} // ничего не нужно
             Void => {}
-            List(vec) => vec.hash(state),
+            List(vec) => vec.read().unwrap().hash(state),
             Dictionary(map) => {
-                for (k, v) in map {
+                for (k, v) in map.read().unwrap().iter() {
                     k.hash(state);
                     v.hash(state);
                 }
@@ -133,11 +133,11 @@ impl Object {
             let Object::String(key) = key else {
                 return None;
             };
-            return Some(map.get(&key).cloned().unwrap_or(Object::Nil));
+            return Some(map.read().unwrap().get(&key).cloned().unwrap_or(Object::Nil));
         }
         if let Object::List(list) = self {
             let Object::Number(i) = key else { return None };
-            return Some(list[i as usize].clone());
+            return Some(list.read().unwrap().get(i as usize).unwrap_or(&Object::Nil).clone());
         }
         None
     }
@@ -189,10 +189,8 @@ impl Add for Object {
             (Object::Number(a), Object::Number(b)) => Ok(Object::Number(a + b)),
             (Object::String(a), Object::String(b)) => Ok(Object::String(a.to_owned() + b)),
             (Object::List(a), _) => {
-                let mut new = vec![];
-                new.append(&mut a.clone());
-                new.push(rhs.clone());
-                Ok(Object::List(new))
+                a.write().unwrap().push(rhs.clone());
+                Ok(Object::List(a.clone()))
             }
             (Object::Arc(rc), _) => rc.clone_into_rc() + rhs,
             (_, Object::Arc(rc)) => self + rc.clone_into_rc(),
@@ -286,7 +284,7 @@ impl Display for Object {
             Object::List(list) => write!(
                 f,
                 "[{}]",
-                list.iter()
+                list.read().unwrap().iter()
                     .map(|obj| match obj {
                         Object::String(str) => format!("{:?}", str),
                         _ => obj.to_string(),
@@ -297,7 +295,7 @@ impl Display for Object {
             Object::Dictionary(obj) => write!(
                 f,
                 "{{{}}}",
-                obj.iter()
+                obj.read().unwrap().iter()
                     .map(|(key, obj)| match obj {
                         Object::String(str) => format!("{}: {:?}", key, str),
                         _ => format!("{}: {}", key, obj),

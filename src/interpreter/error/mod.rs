@@ -102,6 +102,8 @@ pub enum RuntimeErrorType {
     OnlyInstancesHaveProperties,
     UndefinedProperty(String),
     SuperclassMustBeClass,
+    MustBeANumber,
+    OnlyListsHaveIndices,
 }
 
 impl Display for RuntimeErrorType {
@@ -144,6 +146,8 @@ impl Display for RuntimeErrorType {
             }
             RuntimeErrorType::UndefinedProperty(name) => write!(f, "Undefined property '{}'", name),
             RuntimeErrorType::SuperclassMustBeClass => write!(f, "Superclass must be class"),
+            RuntimeErrorType::MustBeANumber => write!(f, "Must be a number"),
+            RuntimeErrorType::OnlyListsHaveIndices => write!(f, "Only lists have indices"),
         }
     }
 }

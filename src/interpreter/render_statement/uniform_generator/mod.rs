@@ -5,6 +5,8 @@ use glium::texture::RawImage2d;
 use glium::{Display, Texture2d};
 use image::RgbaImage;
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use crate::rc;
 
 #[derive(Clone, Debug)]
 pub enum UniformValueWrapper {
@@ -27,76 +29,76 @@ impl UniformGenerator {
 
     fn default_common_uniforms() -> Object {
         let identity_matrix = vec![
-            Object::List(vec![
+            Object::List(rc!(RwLock::new(vec![
                 Object::Number(1.0),
                 Object::Number(0.0),
                 Object::Number(0.0),
                 Object::Number(0.0),
-            ]),
-            Object::List(vec![
+            ]))),
+            Object::List(rc!(RwLock::new(vec![
                 Object::Number(0.0),
                 Object::Number(1.0),
                 Object::Number(0.0),
                 Object::Number(0.0),
-            ]),
-            Object::List(vec![
+            ]))),
+            Object::List(rc!(RwLock::new(vec![
                 Object::Number(0.0),
                 Object::Number(0.0),
                 Object::Number(1.0),
                 Object::Number(0.0),
-            ]),
-            Object::List(vec![
+            ]))),
+            Object::List(rc!(RwLock::new(vec![
                 Object::Number(0.0),
                 Object::Number(0.0),
                 Object::Number(0.0),
                 Object::Number(1.0),
-            ]),
+            ]))),
         ];
 
-        let matrix = Object::Dictionary(HashMap::from([
+        let matrix = Object::Dictionary(Arc::new(RwLock::new(HashMap::from([
             ("type".to_string(), Object::String("mat4".to_string())),
-            ("value".to_string(), Object::List(identity_matrix.clone())),
-        ]));
-        Object::Dictionary(HashMap::from([
+            ("value".to_string(), Object::List(rc!(RwLock::new(identity_matrix.clone())))),
+        ]))));
+        Object::Dictionary(Arc::new(RwLock::new(HashMap::from([
             (
                 "time".to_string(),
-                Object::Dictionary(HashMap::from([
+                Object::Dictionary(Arc::new(RwLock::new(HashMap::from([
                     ("type".to_string(), Object::String("float".to_string())),
                     ("value".to_string(), Object::Number(0.0)),
-                ])),
+                ])))),
             ),
             (
                 "color".to_string(),
-                Object::Dictionary(HashMap::from([
+                Object::Dictionary(Arc::new(RwLock::new(HashMap::from([
                     ("type".to_string(), Object::String("vec3".to_string())),
                     (
                         "value".to_string(),
-                        Object::List(vec![
+                        Object::List(rc!(RwLock::new(vec![
                             Object::Number(1.0),
                             Object::Number(1.0),
                             Object::Number(1.0),
-                        ]),
+                        ]))),
                     ),
-                ])),
+                ])))),
             ),
             ("model".to_string(), matrix.clone()),
             ("view".to_string(), matrix.clone()),
             ("projection".to_string(), matrix.clone()),
             (
                 "light_position".to_string(),
-                Object::Dictionary(HashMap::from([
+                Object::Dictionary(Arc::new(RwLock::new(HashMap::from([
                     ("type".to_string(), Object::String("vec3".to_string())),
                     (
                         "value".to_string(),
-                        Object::List(vec![
+                        Object::List(rc!(RwLock::new(vec![
                             Object::Number(0.0),
                             Object::Number(0.0),
                             Object::Number(5.0),
-                        ]),
+                        ]))),
                     ),
-                ])),
+                ])))),
             ),
-        ]))
+        ]))))
     }
     pub fn generate_uniforms(
         &mut self,
@@ -109,16 +111,16 @@ impl UniformGenerator {
                     "Uniforms must be a dictionary".into(),
                 ));
             }
-        };
-        let Object::Dictionary(common_uniforms) = &mut self.default else {
+        }.read().unwrap();
+        let Object::Dictionary(common_uniforms) = self.default.clone() else {
             panic!("Expected dictionary")
         };
 
         let mut uniform_values = HashMap::new();
-        let merged_uniforms = common_uniforms;
+        let mut merged_uniforms = common_uniforms.write().unwrap();
         merged_uniforms.extend(user_uniforms.iter().map(|(k, v)| (k.clone(), v.clone())));
 
-        for (name, uniform) in merged_uniforms {
+        for (name, uniform) in merged_uniforms.iter() {
             let uniform_dict = match uniform {
                 Object::Dictionary(dict) => dict,
                 _ => {
@@ -126,7 +128,7 @@ impl UniformGenerator {
                         "Uniform must be a dictionary".into(),
                     ));
                 }
-            };
+            }.read().unwrap();
 
             let uniform_type = match uniform_dict.get("type") {
                 Some(Object::String(s)) => s,
@@ -155,9 +157,9 @@ impl UniformGenerator {
                 }
                 "vec3" => {
                     let vec3_value = match value {
-                        Object::List(list) if list.len() == 3 => {
+                        Object::List(list) if list.read().unwrap().len() == 3 => {
                             let mut arr = [0.0f32; 3];
-                            for (i, item) in list.iter().enumerate() {
+                            for (i, item) in list.read().unwrap().iter().enumerate() {
                                 arr[i] = match item {
                                     Object::Number(n) => *n as f32,
                                     _ => {
@@ -182,11 +184,11 @@ impl UniformGenerator {
                         Object::List(list) => {
                             //println!("list: {:?}", list);
                             let mut arr = [[0.0f32; 4]; 4];
-                            for (i, item) in list.iter().enumerate() {
+                            for (i, item) in list.read().unwrap().iter().enumerate() {
                                 arr[i] = match item {
                                     Object::List(n) => {
                                         let mut buffer = [0.0f32; 4];
-                                        for (i, obj) in n.iter().enumerate() {
+                                        for (i, obj) in n.read().unwrap().iter().enumerate() {
                                             buffer[i] = if let Object::Number(n) = obj {
                                                 *n as f32
                                             } else {

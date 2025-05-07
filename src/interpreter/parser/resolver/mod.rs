@@ -2,14 +2,14 @@ use crate::interpreter::Interpreter;
 use crate::interpreter::ast::expr::assignment::Assign;
 use crate::interpreter::ast::expr::binary::Binary;
 use crate::interpreter::ast::expr::call::Call;
-use crate::interpreter::ast::expr::get::Get;
+use crate::interpreter::ast::expr::get::{Get, GetType};
 use crate::interpreter::ast::expr::grouping::Grouping;
 use crate::interpreter::ast::expr::list::List;
 use crate::interpreter::ast::expr::literal::Literal;
 use crate::interpreter::ast::expr::logical::Logical;
 use crate::interpreter::ast::expr::object::Obj;
 use crate::interpreter::ast::expr::self_expr::SelfExpr;
-use crate::interpreter::ast::expr::set::Set;
+use crate::interpreter::ast::expr::set::{Set, SetType};
 use crate::interpreter::ast::expr::superclass::Super;
 use crate::interpreter::ast::expr::unary::Unary;
 use crate::interpreter::ast::expr::variable::Variable;
@@ -202,12 +202,21 @@ impl ExprVisitor<Result<Object>> for Resolver<'_> {
     }
 
     fn visit_get(&mut self, get: &Get<Result<Object>>) -> Result<Object> {
-        self.resolve_expr(get.extract().1)?;
+        let (ty, expr) = get.extract();
+        match ty {
+            GetType::Index(_, index) => { self.resolve_expr(index.clone().deref())?; },
+            _ => {}
+        }
+        self.resolve_expr(expr)?;
         Ok(Object::Nil)
     }
 
     fn visit_set(&mut self, set: &Set<Result<Object>>) -> Result<Object> {
-        let (_, obj, value) = set.extract();
+        let (ty, obj, value) = set.extract();
+        match ty {
+            SetType::Index(_, index) => { self.resolve_expr(index.clone().deref())?; },
+            _ => {}
+        }
         self.resolve_expr(obj)?;
         self.resolve_expr(value)?;
         Ok(Object::Nil)

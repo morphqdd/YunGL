@@ -4,23 +4,29 @@ use crate::utils::next_id;
 use std::ops::Deref;
 
 #[derive(Clone)]
+pub enum GetType<T: 'static> {
+    Name(Token),
+    Index(Token, Box<dyn Expr<T>>),
+}
+
+#[derive(Clone)]
 pub struct Get<T: 'static> {
     id: u64,
-    name: Token,
+    ty: GetType<T>,
     object: Box<dyn Expr<T>>,
 }
 
 impl<T> Get<T> {
-    pub fn new(name: Token, object: Box<dyn Expr<T>>) -> Self {
+    pub fn new(ty: GetType<T>, object: Box<dyn Expr<T>>) -> Self {
         Self {
             id: next_id(),
-            name,
+            ty,
             object,
         }
     }
 
-    pub fn extract(&self) -> (&Token, &dyn Expr<T>) {
-        (&self.name, self.object.deref())
+    pub fn extract(&self) -> (&GetType<T>, &dyn Expr<T>) {
+        (&self.ty, self.object.deref())
     }
 }
 

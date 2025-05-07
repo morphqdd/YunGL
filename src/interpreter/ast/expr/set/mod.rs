@@ -2,27 +2,43 @@ use crate::interpreter::ast::expr::{Expr, ExprVisitor};
 use crate::interpreter::scanner::token::Token;
 use crate::utils::next_id;
 use std::ops::Deref;
+use crate::interpreter::ast::expr::get::GetType;
+
+#[derive(Clone)]
+pub enum SetType<T: 'static> {
+    Name(Token),
+    Index(Token, Box<dyn Expr<T>>),
+}
+
+impl<T> From<GetType<T>> for SetType<T> {
+    fn from(value: GetType<T>) -> Self {
+        match value {
+            GetType::Name(name) => SetType::Name(name),
+            GetType::Index(token, index) => SetType::Index(token, index),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct Set<T: 'static> {
     id: u64,
-    name: Token,
+    ty: SetType<T>,
     obj: Box<dyn Expr<T>>,
     value: Box<dyn Expr<T>>,
 }
 
 impl<T> Set<T> {
-    pub fn new(name: Token, obj: Box<dyn Expr<T>>, value: Box<dyn Expr<T>>) -> Self {
+    pub fn new(ty: SetType<T>, obj: Box<dyn Expr<T>>, value: Box<dyn Expr<T>>) -> Self {
         Self {
             id: next_id(),
-            name,
+            ty,
             obj,
             value,
         }
     }
 
-    pub fn extract(&self) -> (&Token, &dyn Expr<T>, &dyn Expr<T>) {
-        (&self.name, self.obj.deref(), self.value.deref())
+    pub fn extract(&self) -> (&SetType<T>, &dyn Expr<T>, &dyn Expr<T>) {
+        (&self.ty, self.obj.deref(), self.value.deref())
     }
 }
 

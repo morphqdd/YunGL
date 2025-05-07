@@ -12,9 +12,10 @@ export class Cube {
             },
             uniform: {
                 color: { type: "vec3", value: [0.8, 1.0, 1.0] },
-                model: { type: "mat4", value: self._makeModel(0) }
+                model: { type: "mat4", value: self._makeModel(0) },
+                u_light: { type: "vec3", value: [-1, 0.4, 0.9] }
             },
-            primitive: "lineStrip"
+            primitive: "triangles"
         };
 
         self.vertices = {
@@ -79,22 +80,7 @@ export class Cube {
     }
 
     update(dt) {
-        self.pipeline = {
-                    attributes: {
-                        in: {
-                            position: "vec4",
-                            normal: "vec3"
-                        },
-                        out: {
-                            v_normal: "vec3"
-                        }
-                    },
-                    uniform: {
-                        color: { type: "vec3", value: [cos(dt*0.1)+0.4, sin(dt*0.1)+0.3, cos(dt)*sin(dt)] },
-                        model: { type: "mat4", value: self._makeModel(dt) }
-                    },
-                    primitive: "lineStrip"
-                };
+        self.pipeline.uniform.model.value = self._makeModel(dt);
     }
 
     getPipeline() {
