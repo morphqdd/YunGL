@@ -17,4 +17,5 @@ while true {
         [cube.pipeline, cube.vertices]
     ]);
     cube.update(t);
+    //cube.pipeline.uniform.u_light_color_1.value = [sin(t), cos(t), sin(t)*cos(t)];
 }
