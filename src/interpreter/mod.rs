@@ -59,7 +59,8 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock, mpsc};
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, Mutex, RwLock, mpsc};
 use std::time::{Duration, Instant};
 
 #[derive(Clone)]
@@ -70,11 +71,38 @@ pub struct Interpreter {
     globals: Option<Arc<RwLock<Environment>>>,
     locals: Arc<RwLock<HashMap<u64, usize>>>,
     cancel_flag: Arc<AtomicBool>,
+    must_call_channel: (Sender<Callable>, Arc<Mutex<Receiver<Callable>>>),
 }
 
 impl Interpreter {
     pub fn new(proxy: EventLoopProxy<InterpreterEvent>, path: PathBuf) -> Self {
         let mut globals = Environment::default();
+
+        globals.define(
+            "regKeyEvent",
+            Some(Object::Callable(Callable::build(
+                next_id(),
+                None,
+                None,
+                rc!(|interpreter, args| {
+                    let Object::String(key) = args[0].clone() else {
+                        return Ok(Object::Nil);
+                    };
+                    let Object::Callable(func) = args[1].clone() else {
+                        return Ok(Object::Nil);
+                    };
+
+                    interpreter
+                        .proxy
+                        .send_event(InterpreterEvent::RegKeyEvent(key, func))?;
+
+                    Ok(Object::Nil)
+                }),
+                rc!(|| 2),
+                rc!(|| "regKeyEvent".into()),
+                false,
+            ))),
+        );
 
         globals.define(
             "getWindowDimensions",
@@ -304,6 +332,8 @@ impl Interpreter {
 
         let globals = Arc::new(RwLock::new(globals));
 
+        let (tx, rx) = mpsc::channel();
+
         Self {
             proxy,
             path: Arc::new(path),
@@ -311,8 +341,23 @@ impl Interpreter {
             globals: Some(globals),
             locals: Default::default(),
             cancel_flag: Arc::new(AtomicBool::new(false)),
+            must_call_channel: (tx, rc!(Mutex::new(rx))),
         }
     }
+
+    pub fn get_must_call_handler(&self) -> Sender<Callable> {
+        self.must_call_channel.0.clone()
+    }
+
+    pub fn handle_must_call(&mut self) -> Result<Object> {
+        let callable = if let Ok(callable) = self.must_call_channel.1.lock().unwrap().try_recv() {
+            callable
+        } else {
+            return Ok(Object::Nil);
+        };
+        callable._call(self, vec![])
+    }
+
     pub fn run_script(&mut self) -> Result<()> {
         let code = fs::read_to_string(self.path.as_ref()).unwrap();
         self.run(&code)?;
@@ -370,6 +415,7 @@ impl Interpreter {
         if self.cancel_flag.load(Ordering::Relaxed) {
             return Ok(Object::Nil);
         }
+        self.handle_must_call()?;
         statement.accept(self)
     }
 
@@ -378,6 +424,7 @@ impl Interpreter {
         if self.cancel_flag.load(Ordering::Relaxed) {
             return Ok(Object::Nil);
         }
+        self.handle_must_call()?;
         expr.accept(self)
     }
 
@@ -571,7 +618,7 @@ impl ExprVisitor<Result<Object>> for Interpreter {
                     )
                     .into());
                 }
-                Interpreter::handle_runtime_error(call_.get_token(), callable.call(self, args))
+                Interpreter::handle_runtime_error(call_.get_token(), callable._call(self, args))
             }
             _ => Err(RuntimeError::new(call_.get_token(), RuntimeErrorType::NotCallable).into()),
         }

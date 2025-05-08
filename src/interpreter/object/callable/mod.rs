@@ -125,7 +125,7 @@ impl Callable {
         }
     }
 
-    pub fn call(&self, interpreter: &mut Interpreter, arguments: Vec<Object>) -> Result<Object> {
+    pub fn _call(&self, interpreter: &mut Interpreter, arguments: Vec<Object>) -> Result<Object> {
         (self.call)(interpreter, arguments)
     }
 

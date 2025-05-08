@@ -1,0 +1,109 @@
+use "utils/viewMatrix";
+use "utils/math";
+
+export class Camera {
+    init(position, target, up, speed, rotationSpeed) {
+        self.position = position;              // Camera position in world space
+        self.target = target;                  // Point the camera is looking at
+        self.up = up;                          // Up direction for camera orientation
+        self.speed = speed;                    // Movement speed
+        self.rotationSpeed = rotationSpeed;    // Rotation speed in radians
+        self.viewMatrix = viewMatrix(self.position, subtract(self.target, self.position), self.up);
+    }
+
+    updateViewMatrix() {
+        // Compute direction
+        let direction = subtract(self.target, self.position);
+
+        let length = sqrt(direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2]);
+        if length < 0.01 {
+            self.target = add(self.position, normalize(direction));
+            direction = subtract(self.target, self.position);
+        }
+
+        self.viewMatrix = viewMatrix(self.position, direction, self.up);
+
+        // Debug logging
+        print "Camera Position: " +  string(camera.position);
+        print "Camera Target: " + string(camera.target);
+        print "View Matrix: " + string(self.viewMatrix);
+    }
+
+    moveForward() {
+        let direction = normalize(subtract(self.target, self.position));
+        self.position = add(self.position, scale(direction, self.speed));
+        self.target = add(self.position, direction);
+        self.updateViewMatrix();
+    }
+
+    moveBackward() {
+        let direction = normalize(subtract(self.target, self.position));
+        self.position = subtract(self.position, scale(direction, self.speed));
+        self.target = add(self.position, direction);
+        self.updateViewMatrix();
+    }
+
+    strafeLeft() {
+        let direction = normalize(subtract(self.target, self.position));
+        let right = normalize(cross(direction, self.up));
+        self.position = subtract(self.position, scale(right, self.speed));
+        self.target = add(self.position, direction);
+        self.updateViewMatrix();
+    }
+
+    strafeRight() {
+        let direction = normalize(subtract(self.target, self.position));
+        let right = normalize(cross(direction, self.up));
+        self.position = add(self.position, scale(right, self.speed));
+        self.target = add(self.position, direction);
+        self.updateViewMatrix();
+    }
+
+    moveUp() {
+        self.position = add(self.position, scale(self.up, self.speed));
+        self.target = add(self.target, scale(self.up, self.speed));
+        self.updateViewMatrix();
+    }
+
+    moveDown() {
+        self.position = subtract(self.position, scale(self.up, self.speed));
+        self.target = subtract(self.target, scale(self.up, self.speed));
+        self.updateViewMatrix();
+    }
+
+    yawLeft() {
+        let direction = subtract(self.target, self.position);
+        let rotMatrix = rotationMatrix(self.up, self.rotationSpeed);
+        self.target = add(self.position, transformVector(rotMatrix, direction));
+        self.updateViewMatrix();
+    }
+
+    yawRight() {
+        let direction = subtract(self.target, self.position);
+        let rotMatrix = rotationMatrix(self.up, -self.rotationSpeed);
+        self.target = add(self.position, transformVector(rotMatrix, direction));
+        self.updateViewMatrix();
+    }
+
+    pitchUp() {
+        let direction = normalize(subtract(self.target, self.position));
+        let right = normalize(cross(direction, self.up));
+        let rotMatrix = rotationMatrix(right, self.rotationSpeed);
+        self.target = add(self.position, transformVector(rotMatrix, direction));
+        self.up = normalize(transformVector(rotMatrix, self.up));
+        self.updateViewMatrix();
+    }
+
+    pitchDown() {
+        let direction = normalize(subtract(self.target, self.position));
+        let right = normalize(cross(direction, self.up));
+        let rotMatrix = rotationMatrix(right, -self.rotationSpeed);
+        self.target = add(self.position, transformVector(rotMatrix, direction));
+        self.up = normalize(transformVector(rotMatrix, self.up));
+        self.updateViewMatrix();
+    }
+
+    getViewMatrix() {
+        return self.viewMatrix;
+    }
+}

@@ -18,7 +18,7 @@ export class Cube {
                 color: { type: "vec3", value: [1, 1, 1] },
                 model: { type: "mat4", value: self._makeModel(0) },
                 u_light: { type: "vec3", value: light },
-                view: { type: "mat4", value: viewM},
+                view: { type: "mat4", value: viewM },
                 projection: { type: "mat4", value: projectionM }
             },
             primitive: "triangles"

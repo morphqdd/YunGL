@@ -1,21 +1,71 @@
 use "cube";
-use "utils/viewMatrix";
+use "camera";
 use "utils/projectionMatrix";
 
-let a = 0;
+let t = 0;
 
-let viewM = viewMatrix([0, -2, 1], [0, 1.0, 1.0], [0.0, 0.0, 1]);
+let camera = Camera([0, -2, 1], [0, 1, 1], [0, 0, 1], 0.1, 0.02);
 
 let dimensions = getWindowDimensions();
 let projectionM = projectionMatrix(dimensions.width, dimensions.height);
 let light = [1, 0.4, 0.3];
-let cube = Cube(viewM, projectionM, light);
+let cube = Cube(camera.getViewMatrix(), projectionM, light);
 
+regKeyEvent("w", fun() {
+    camera.moveForward();
+    cube.pipeline.uniform.view.value = camera.getViewMatrix();
+});
+
+regKeyEvent("s", fun() {
+    camera.moveBackward();
+    cube.pipeline.uniform.view.value = camera.getViewMatrix();
+});
+
+regKeyEvent("d", fun() {
+    camera.strafeLeft();
+    cube.pipeline.uniform.view.value = camera.getViewMatrix();
+});
+
+regKeyEvent("a", fun() {
+    camera.strafeRight();
+    cube.pipeline.uniform.view.value = camera.getViewMatrix();
+});
+
+regKeyEvent("q", fun() {
+    camera.moveUp();
+    cube.pipeline.uniform.view.value = camera.getViewMatrix();
+});
+
+regKeyEvent("e", fun() {
+    camera.moveDown();
+    cube.pipeline.uniform.view.value = camera.getViewMatrix();
+});
+
+regKeyEvent("l", fun() {
+    camera.yawLeft();
+    cube.pipeline.uniform.view.value = camera.getViewMatrix();
+});
+
+regKeyEvent("j", fun() {
+    camera.yawRight();
+    cube.pipeline.uniform.view.value = camera.getViewMatrix();
+});
+
+regKeyEvent("i", fun() {
+    camera.pitchUp();
+    cube.pipeline.uniform.view.value = camera.getViewMatrix();
+});
+
+regKeyEvent("k", fun() {
+    camera.pitchDown();
+    cube.pipeline.uniform.view.value = camera.getViewMatrix();
+});
+
+// Main render loop
 while true {
-    a = a + 0.01;
+    t = t + 0.01;
     render([
         [cube.pipeline, cube.vertices]
     ]);
-    cube.update(a);
+    cube.update(t);
 }
-

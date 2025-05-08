@@ -63,7 +63,7 @@ impl From<Class> for Callable {
                 if let Some(initializer) = value_call.find_method("init") {
                     match initializer.bind(instance.clone())? {
                         Object::Callable(callable) => {
-                            callable.call(interpreter, args)?;
+                            callable._call(interpreter, args)?;
                         }
                         _ => panic!("Interpreter bug!"),
                     }

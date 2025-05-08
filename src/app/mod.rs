@@ -1,7 +1,7 @@
 use crate::interpreter::Interpreter;
 use crate::interpreter::event::InterpreterEvent;
 use crate::interpreter::object::Object;
-use crate::interpreter::object::Object::String;
+use crate::interpreter::object::callable::Callable;
 use crate::interpreter::render_statement::RenderStatement;
 use crate::interpreter::render_statement::buffers_data::BuffersData;
 use crate::interpreter::render_statement::pipeline_data::{AttributeLayouts, PipelineData};
@@ -10,20 +10,27 @@ use crate::rc;
 use glium::glutin::surface::WindowSurface;
 use glium::index::{NoIndices, PrimitiveType};
 use glium::winit::application::ApplicationHandler;
-use glium::winit::event::{StartCause, WindowEvent};
+use glium::winit::event::KeyEvent;
+use glium::winit::event::{ElementState, StartCause, WindowEvent};
 use glium::winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use glium::winit::window::{Window, WindowId};
 use glium::{Depth, DepthTest, Display, DrawParameters, Surface};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use notify_debouncer_mini::{DebounceEventResult, DebouncedEvent, Debouncer, new_debouncer};
 use std::collections::HashMap;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, RwLock, mpsc};
 use std::time::Duration;
+
+#[derive(Debug)]
+pub enum AppEvent {
+    KeyEvent(KeyEvent),
+    ReqKeyEvent(String, Callable),
+}
 
 pub struct App {
     window: Arc<Window>,
@@ -33,7 +40,8 @@ pub struct App {
     uniform_generator: Arc<RwLock<UniformGenerator>>,
     path: Arc<PathBuf>,
     watcher: Arc<Debouncer<RecommendedWatcher>>,
-    rx: Arc<Mutex<Receiver<()>>>,
+    rx_restart: Arc<Mutex<Receiver<()>>>,
+    event_channel: (Sender<AppEvent>, Arc<Mutex<Receiver<AppEvent>>>),
 }
 
 impl App {
@@ -59,6 +67,9 @@ impl App {
             .watcher()
             .watch(&path, RecursiveMode::NonRecursive)
             .unwrap();
+
+        let (tx_event, rx_event) = mpsc::channel();
+
         Self {
             window,
             display,
@@ -67,7 +78,8 @@ impl App {
             uniform_generator: rc!(RwLock::new(UniformGenerator::new())),
             path: path_arc,
             watcher: rc!(debouncer),
-            rx: rc!(Mutex::new(rx)),
+            rx_restart: rc!(Mutex::new(rx)),
+            event_channel: (tx_event, rc!((Mutex::new(rx_event)))),
         }
     }
 }
@@ -77,7 +89,8 @@ impl ApplicationHandler<InterpreterEvent> for App {
         match cause {
             StartCause::Init => {
                 let interpreter = self.interpreter.clone();
-                let rx = self.rx.clone();
+                let must_call_handler = interpreter.lock().unwrap().get_must_call_handler();
+                let rx = self.rx_restart.clone();
                 let flag = interpreter.lock().unwrap().get_cancel_flag();
                 std::thread::spawn(move || {
                     loop {
@@ -101,6 +114,29 @@ impl ApplicationHandler<InterpreterEvent> for App {
                 std::thread::spawn(move || {
                     while rx.lock().unwrap().recv().is_ok() {
                         flag.swap(true, Ordering::Relaxed);
+                    }
+                });
+
+                let (_, rx_event) = self.event_channel.clone();
+                std::thread::spawn(move || {
+                    let mut event_map: HashMap<String, Callable> = HashMap::new();
+                    while let Ok(event) = rx_event.lock().unwrap().recv() {
+                        match event {
+                            AppEvent::KeyEvent(key_event)
+                                if key_event.state == ElementState::Pressed =>
+                            {
+                                let Some(key) = key_event.logical_key.to_text() else {
+                                    continue;
+                                };
+                                if let Some(callable) = event_map.get(key).cloned() {
+                                    must_call_handler.send(callable).unwrap()
+                                }
+                            }
+                            AppEvent::ReqKeyEvent(key, callable) => {
+                                event_map.insert(key, callable);
+                            }
+                            _ => {}
+                        }
                     }
                 });
             }
@@ -181,22 +217,20 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         _ => rc!(RwLock::new(HashMap::new())),
                     };
 
-                    // 2. Соберём inputs и outputs
                     let mut attrs_in = HashMap::new();
                     let mut attrs_out = HashMap::new();
 
-                    // Входные
                     if let Some(Dictionary(ins)) = raw_attrs.read().unwrap().get("in") {
                         for (name, typ_obj) in ins.read().unwrap().iter() {
-                            if let String(s) = typ_obj {
+                            if let Object::String(s) = typ_obj {
                                 attrs_in.insert(name.clone(), s.clone());
                             }
                         }
                     }
-                    // Выходные
+
                     if let Some(Dictionary(outs)) = raw_attrs.read().unwrap().get("out") {
                         for (name, typ_obj) in outs.read().unwrap().iter() {
-                            if let String(s) = typ_obj {
+                            if let Object::String(s) = typ_obj {
                                 attrs_out.insert(name.clone(), s.clone());
                             }
                         }
@@ -210,7 +244,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         .expect("Failed to generate uniforms");
 
                     let primitive = match pipeline.get_field(ObjString(PRIMITIVE.into())) {
-                        Some(String(m)) => m,
+                        Some(Object::String(m)) => m,
                         _ => "triangleStrip".into(),
                     };
 
@@ -241,6 +275,11 @@ impl ApplicationHandler<InterpreterEvent> for App {
             InterpreterEvent::GetWindowDimensions(tx) => {
                 tx.send(self.window.inner_size().into()).unwrap();
             }
+            InterpreterEvent::RegKeyEvent(key, handler) => self
+                .event_channel
+                .0
+                .send(AppEvent::ReqKeyEvent(key, handler))
+                .unwrap(),
             InterpreterEvent::None => {}
             _ => {}
         }
@@ -273,13 +312,18 @@ impl ApplicationHandler<InterpreterEvent> for App {
                                 },
                                 ..Default::default()
                             },
-                            //&Default::default(),
                         )
                         .unwrap();
                     target.finish().unwrap();
                 }
             }
             WindowEvent::Resized(size) => self.display.resize(size.into()),
+            WindowEvent::KeyboardInput { event, .. } => {
+                self.event_channel
+                    .0
+                    .send(AppEvent::KeyEvent(event))
+                    .unwrap();
+            }
             _ => {}
         }
     }
