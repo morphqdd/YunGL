@@ -1,3 +1,4 @@
+use crate::interpreter::ast::expr::anon_fun::AnonFun;
 use crate::interpreter::ast::expr::assignment::Assign;
 use crate::interpreter::ast::expr::binary::Binary;
 use crate::interpreter::ast::expr::call::Call;
@@ -14,6 +15,7 @@ use crate::interpreter::ast::expr::unary::Unary;
 use crate::interpreter::ast::expr::variable::Variable;
 use downcast_rs::{Downcast, impl_downcast};
 
+pub mod anon_fun;
 pub mod assignment;
 pub mod binary;
 pub mod call;
@@ -44,6 +46,7 @@ pub trait ExprVisitor<T> {
     fn visit_super(&mut self, super_val: &Super) -> T;
     fn visit_list(&mut self, list: &List<T>) -> T;
     fn visit_object(&mut self, object: &Obj<T>) -> T;
+    fn visit_anon(&mut self, anon: &AnonFun<T>) -> T;
 }
 
 pub trait Expr<T>: Downcast + CloneExpr<T> + Send + Sync + 'static {

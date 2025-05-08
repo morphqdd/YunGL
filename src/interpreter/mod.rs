@@ -9,6 +9,7 @@ pub mod render_statement;
 pub mod scanner;
 pub mod shell;
 
+use crate::interpreter::ast::expr::anon_fun::AnonFun;
 use crate::interpreter::ast::expr::assignment::Assign;
 use crate::interpreter::ast::expr::binary::Binary;
 use crate::interpreter::ast::expr::call::Call;
@@ -42,7 +43,7 @@ use crate::interpreter::error::{InterpreterError, RuntimeError, RuntimeErrorType
 use crate::interpreter::event::InterpreterEvent;
 use crate::interpreter::exporter::Exporter;
 use crate::interpreter::parser::Parser;
-use crate::interpreter::parser::resolver::Resolver;
+use crate::interpreter::parser::resolver::{Resolver, SomeFun};
 use crate::interpreter::scanner::Scanner;
 use crate::interpreter::scanner::token::Token;
 use crate::interpreter::scanner::token::token_type::TokenType;
@@ -58,7 +59,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, mpsc};
 use std::time::{Duration, Instant};
 
 #[derive(Clone)]
@@ -74,6 +75,70 @@ pub struct Interpreter {
 impl Interpreter {
     pub fn new(proxy: EventLoopProxy<InterpreterEvent>, path: PathBuf) -> Self {
         let mut globals = Environment::default();
+
+        globals.define(
+            "getWindowDimensions",
+            Some(Object::Callable(Callable::build(
+                next_id(),
+                None,
+                None,
+                rc!(|interpreter, _| {
+                    let (tx, rx) = mpsc::channel::<(u32, u32)>();
+                    interpreter
+                        .proxy
+                        .send_event(InterpreterEvent::GetWindowDimensions(tx))
+                        .unwrap();
+                    while let Ok(dimensions) = rx.recv() {
+                        return Ok(Object::Dictionary(Arc::new(RwLock::new({
+                            let mut h = HashMap::new();
+                            h.insert("width".into(), Object::Number(dimensions.0 as f64));
+                            h.insert("height".into(), Object::Number(dimensions.1 as f64));
+                            h
+                        }))));
+                    }
+                    Ok(Object::Nil)
+                }),
+                rc!(|| 0),
+                rc!(|| "getWindowDimensions".into()),
+                false,
+            ))),
+        );
+
+        globals.define(
+            "tan",
+            Some(Object::Callable(Callable::build(
+                next_id(),
+                None,
+                None,
+                rc!(|_, args| {
+                    if let Object::Number(n) = args[0].clone() {
+                        return Ok(Object::Number(n.tan()));
+                    }
+                    Ok(Object::Nil)
+                }),
+                rc!(|| 1),
+                rc!(|| "tan".into()),
+                false,
+            ))),
+        );
+
+        globals.define(
+            "sqrt",
+            Some(Object::Callable(Callable::build(
+                next_id(),
+                None,
+                None,
+                rc!(|_, args| {
+                    if let Object::Number(n) = args[0].clone() {
+                        return Ok(Object::Number(n.sqrt()));
+                    }
+                    Ok(Object::Nil)
+                }),
+                rc!(|| 1),
+                rc!(|| "sqrt".into()),
+                false,
+            ))),
+        );
 
         globals.define(
             "sin",
@@ -520,31 +585,44 @@ impl ExprVisitor<Result<Object>> for Interpreter {
                 match obj {
                     Object::Instance(instance) => return instance.get(name),
                     Object::Dictionary(dict) => {
-                        return Ok(
-                            dict.read().unwrap()
-                                .get(name.get_lexeme())
-                                .unwrap_or(
-                                    dict.read().unwrap()
-                                        .get(&format!(r#""{}""#, name.get_lexeme()))
-                                        .unwrap_or(&Object::Nil)
-                                ).clone());
+                        return Ok(dict
+                            .read()
+                            .unwrap()
+                            .get(name.get_lexeme())
+                            .unwrap_or(
+                                dict.read()
+                                    .unwrap()
+                                    .get(&format!(r#""{}""#, name.get_lexeme()))
+                                    .unwrap_or(&Object::Nil),
+                            )
+                            .clone());
                     }
                     _ => {}
                 }
-                Err(RuntimeError::new(name.clone(), RuntimeErrorType::OnlyInstancesHaveProperties).into())
+                Err(
+                    RuntimeError::new(name.clone(), RuntimeErrorType::OnlyInstancesHaveProperties)
+                        .into(),
+                )
             }
             GetType::Index(token, index) => {
-                let Object::Number(index) = self.evaluate(index.clone().deref())?
-                else { return Err(RuntimeError::new(token.clone(), RuntimeErrorType::MustBeANumber).into()); };
-                let Object::List(_) = &obj
-                else { return Err(RuntimeError::new(token.clone(), RuntimeErrorType::OnlyListsHaveIndices).into()); };
+                let Object::Number(index) = self.evaluate(index.clone().deref())? else {
+                    return Err(
+                        RuntimeError::new(token.clone(), RuntimeErrorType::MustBeANumber).into(),
+                    );
+                };
+                let Object::List(_) = &obj else {
+                    return Err(RuntimeError::new(
+                        token.clone(),
+                        RuntimeErrorType::OnlyListsHaveIndices,
+                    )
+                    .into());
+                };
                 Ok(obj.get_field(Object::Number(index)).unwrap())
             }
         }
         //println!("{name}");
 
         //println!("Eval");
-
     }
 
     fn visit_set(&mut self, set: &Set<Result<Object>>) -> Result<Object> {
@@ -561,24 +639,36 @@ impl ExprVisitor<Result<Object>> for Interpreter {
                     }
                     Object::Dictionary(dict) => {
                         let value = self.evaluate(value)?;
-                        dict.write().unwrap().insert(name.get_lexeme().into(), value.clone());
-                        return Ok(value)
+                        dict.write()
+                            .unwrap()
+                            .insert(name.get_lexeme().into(), value.clone());
+                        return Ok(value);
                     }
                     _ => {}
                 }
-                Err(RuntimeError::new(name.clone(), RuntimeErrorType::OnlyInstancesHaveProperties).into())
+                Err(
+                    RuntimeError::new(name.clone(), RuntimeErrorType::OnlyInstancesHaveProperties)
+                        .into(),
+                )
             }
             SetType::Index(token, index) => {
-                let Object::Number(index) = self.evaluate(index.clone().deref())?
-                else { return Err(RuntimeError::new(token.clone(), RuntimeErrorType::MustBeANumber).into()); };
-                let Object::List(list) = &obj
-                else { return Err(RuntimeError::new(token.clone(), RuntimeErrorType::OnlyListsHaveIndices).into()); };
+                let Object::Number(index) = self.evaluate(index.clone().deref())? else {
+                    return Err(
+                        RuntimeError::new(token.clone(), RuntimeErrorType::MustBeANumber).into(),
+                    );
+                };
+                let Object::List(list) = &obj else {
+                    return Err(RuntimeError::new(
+                        token.clone(),
+                        RuntimeErrorType::OnlyListsHaveIndices,
+                    )
+                    .into());
+                };
                 let value = self.evaluate(value)?;
                 list.write().unwrap()[index as usize] = value.clone();
                 Ok(value)
             }
         }
-
     }
 
     fn visit_self(&mut self, self_val: &SelfExpr) -> Result<Object> {
@@ -634,6 +724,11 @@ impl ExprVisitor<Result<Object>> for Interpreter {
             obj.insert(key.get_lexeme().to_string(), self.evaluate(value.deref())?);
         }
         Ok(Object::Dictionary(rc!(RwLock::new(obj))))
+    }
+
+    fn visit_anon(&mut self, anon: &AnonFun<Result<Object>>) -> Result<Object> {
+        let anon = Object::function(SomeFun::AnonFun(anon.clone()), self.env.clone(), false);
+        Ok(anon)
     }
 }
 
@@ -717,7 +812,7 @@ impl StmtVisitor<Result<Object>> for Interpreter {
 
     fn visit_fun(&mut self, stmt: &Fun<Result<Object>>) -> Result<Object> {
         let name = stmt.get_name();
-        let func = Object::function(stmt.clone(), self.env.clone(), false);
+        let func = Object::function(SomeFun::Fun(stmt.clone()), self.env.clone(), false);
 
         match &self.env {
             None => {
@@ -784,7 +879,7 @@ impl StmtVisitor<Result<Object>> for Interpreter {
             for method in methods {
                 let name = method.get_name();
                 let func = Object::function(
-                    method.clone(),
+                    SomeFun::Fun(method.clone()),
                     self.env.clone(),
                     method.get_name().get_lexeme().eq("init"),
                 );

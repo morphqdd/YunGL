@@ -1,4 +1,5 @@
 use crate::interpreter::Interpreter;
+use crate::interpreter::ast::expr::anon_fun::AnonFun;
 use crate::interpreter::ast::expr::assignment::Assign;
 use crate::interpreter::ast::expr::binary::Binary;
 use crate::interpreter::ast::expr::call::Call;
@@ -46,6 +47,11 @@ pub enum ClassType {
     Class,
     SubClass,
     None,
+}
+
+pub enum SomeFun {
+    Fun(Fun<Result<Object>>),
+    AnonFun(AnonFun<Result<Object>>),
 }
 
 pub struct Resolver<'a> {
@@ -123,17 +129,30 @@ where
         }
     }
 
-    fn resolve_function(&mut self, func: &Fun<Result<Object>>, ty: FunctionType) -> Result<()> {
+    fn resolve_function(&mut self, func: SomeFun, ty: FunctionType) -> Result<()> {
         let enclosing_func = self.current_function;
         self.current_function = ty;
 
         self.begin_scope();
-        let (_, _, params, body) = func.clone().extract();
+        let (params, body) = match func {
+            SomeFun::Fun(func) => {
+                let (_, _, params, body) = func.extract();
+                (params, body)
+            }
+            SomeFun::AnonFun(anon) => {
+                let (_, _, params, body) = anon.extract();
+                (
+                    params.to_vec(),
+                    body.iter().map(|x| x.clone_box()).collect(),
+                )
+            }
+        };
+
         for param in params {
             self.declare(&param);
             self.define(&param);
         }
-        self.resolve(body.iter().map(AsRef::as_ref).collect::<Vec<_>>())?;
+        self.resolve(body.iter().map(AsRef::as_ref).collect())?;
         self.end_scope();
 
         self.current_function = enclosing_func;
@@ -204,7 +223,9 @@ impl ExprVisitor<Result<Object>> for Resolver<'_> {
     fn visit_get(&mut self, get: &Get<Result<Object>>) -> Result<Object> {
         let (ty, expr) = get.extract();
         match ty {
-            GetType::Index(_, index) => { self.resolve_expr(index.clone().deref())?; },
+            GetType::Index(_, index) => {
+                self.resolve_expr(index.clone().deref())?;
+            }
             _ => {}
         }
         self.resolve_expr(expr)?;
@@ -214,7 +235,9 @@ impl ExprVisitor<Result<Object>> for Resolver<'_> {
     fn visit_set(&mut self, set: &Set<Result<Object>>) -> Result<Object> {
         let (ty, obj, value) = set.extract();
         match ty {
-            SetType::Index(_, index) => { self.resolve_expr(index.clone().deref())?; },
+            SetType::Index(_, index) => {
+                self.resolve_expr(index.clone().deref())?;
+            }
             _ => {}
         }
         self.resolve_expr(obj)?;
@@ -269,6 +292,11 @@ impl ExprVisitor<Result<Object>> for Resolver<'_> {
         }
         Ok(Object::Nil)
     }
+
+    fn visit_anon(&mut self, anon: &AnonFun<Result<Object>>) -> Result<Object> {
+        self.resolve_function(SomeFun::AnonFun(anon.clone()), FunctionType::Function)?;
+        Ok(Object::Nil)
+    }
 }
 
 impl StmtVisitor<Result<Object>> for Resolver<'_> {
@@ -320,7 +348,7 @@ impl StmtVisitor<Result<Object>> for Resolver<'_> {
         let name = stmt.get_name();
         self.declare(&name);
         self.define(&name);
-        self.resolve_function(stmt, FunctionType::Function)?;
+        self.resolve_function(SomeFun::Fun(stmt.clone()), FunctionType::Function)?;
         Ok(Object::Nil)
     }
 
@@ -380,7 +408,7 @@ impl StmtVisitor<Result<Object>> for Resolver<'_> {
                 ty = FunctionType::Initializer;
             }
 
-            self.resolve_function(&method.clone(), ty)?
+            self.resolve_function(SomeFun::Fun(method.clone()), ty)?
         }
 
         self.end_scope();

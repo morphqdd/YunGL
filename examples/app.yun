@@ -1,11 +1,15 @@
-use "triangle";
 use "cube";
+use "utils/viewMatrix";
+use "utils/projectionMatrix";
 
 let a = 0;
 
-let cube = Cube();
+let viewM = viewMatrix([0, -2, 1], [0, 1.0, 1.0], [0.0, 0.0, 1]);
 
-let time = clock();
+let dimensions = getWindowDimensions();
+let projectionM = projectionMatrix(dimensions.width, dimensions.height);
+let light = [1, 0.4, 0.3];
+let cube = Cube(viewM, projectionM, light);
 
 while true {
     a = a + 0.01;
@@ -14,3 +18,4 @@ while true {
     ]);
     cube.update(a);
 }
+

@@ -3,11 +3,13 @@ use crate::interpreter::ast::stmt::fun_stmt::Fun;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::error::{InterpreterError, Result};
 use crate::interpreter::object::Object;
+use crate::interpreter::parser::resolver::SomeFun;
 use crate::interpreter::scanner::token::Token;
 use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::rc;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
+use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 
 type CallFn = Arc<dyn Fn(&mut Interpreter, Vec<Object>) -> Result<Object> + Send + Sync + 'static>;
@@ -15,7 +17,7 @@ type CallFn = Arc<dyn Fn(&mut Interpreter, Vec<Object>) -> Result<Object> + Send
 #[derive(Clone)]
 pub struct Callable {
     id: u64,
-    declaration: Option<Arc<RwLock<Fun<Result<Object>>>>>,
+    declaration: Option<Arc<RwLock<SomeFun>>>,
     closure: Option<Arc<RwLock<Environment>>>,
     call: CallFn,
     arity: Arc<dyn Fn() -> usize + Send + Sync + 'static>,
@@ -25,17 +27,23 @@ pub struct Callable {
 
 impl Callable {
     pub fn new(
-        declaration: Option<Arc<RwLock<Fun<Result<Object>>>>>,
+        declaration: Option<Arc<RwLock<SomeFun>>>,
         closure: Option<Arc<RwLock<Environment>>>,
         is_init: bool,
     ) -> Self {
-        let (id, name, params, body) = declaration
-            .clone()
-            .unwrap()
-            .read()
-            .unwrap()
-            .clone()
-            .extract();
+        let (id, name, params, body) = match declaration.clone().unwrap().read().unwrap().deref() {
+            SomeFun::Fun(func) => func.clone().extract(),
+            SomeFun::AnonFun(anon) => {
+                let (id, name, params, body) = anon.extract();
+                (
+                    id,
+                    name.clone(),
+                    params.to_vec(),
+                    body.iter().map(|x| x.clone_box()).collect(),
+                )
+            }
+        };
+
         let arity = params.len();
         let lexeme = name.get_lexeme().to_string();
         Self {
@@ -99,7 +107,7 @@ impl Callable {
 
     pub fn build(
         id: u64,
-        declaration: Option<Arc<RwLock<Fun<Result<Object>>>>>,
+        declaration: Option<Arc<RwLock<SomeFun>>>,
         closure: Option<Arc<RwLock<Environment>>>,
         call: CallFn,
         arity: Arc<dyn Fn() -> usize + Send + Sync + 'static>,
@@ -132,7 +140,7 @@ impl Callable {
         self.closure.clone()
     }
 
-    pub fn get_declaration(&self) -> Option<Arc<RwLock<Fun<Result<Object>>>>> {
+    pub fn get_declaration(&self) -> Option<Arc<RwLock<SomeFun>>> {
         self.declaration.clone()
     }
 

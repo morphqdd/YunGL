@@ -6,8 +6,9 @@ use crate::interpreter::render_statement::uniform_generator::UniformValueWrapper
 use crate::interpreter::render_statement::vertex::{Vertex, create_vertex_buffer};
 use glium::glutin::surface::WindowSurface;
 use glium::index::PrimitiveType;
-use glium::uniforms::{EmptyUniforms, UniformsStorage};
+use glium::uniforms::{EmptyUniforms, UniformType, UniformsStorage};
 use glium::{Display, Program, VertexBuffer, uniform};
+use std::collections::HashMap;
 
 const DEFAULT_MATRIX: [[f32; 4]; 4] = [
     [1.0, 0.0, 0.0, 0.0],
@@ -56,7 +57,6 @@ impl RenderStatement {
         primitive: String,
     ) -> Result<Self> {
         let uniform_values = pipeline_data.uniforms;
-
         Ok(Self {
             vertex_shader: ShaderGenerator::generate_vertex_shader(
                 &pipeline_data.attributes,
@@ -113,7 +113,7 @@ impl RenderStatement {
                         UniformValueWrapper::Vec3(v) => *v,
                         _ => [1.0, 1.0, 1.0],
                     })
-                    .unwrap_or([1.0, 1.0, 1.0])
+                    .unwrap_or([1.0, 1.0, 1.0]),
             },
             primitive_type: match primitive.as_str() {
                 "points" => PrimitiveType::Points,

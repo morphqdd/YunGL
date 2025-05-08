@@ -7,6 +7,7 @@ use crate::interpreter::object::callable::Callable;
 use crate::interpreter::object::class::Class;
 use crate::interpreter::object::instance::Instance;
 use crate::interpreter::object::native_object::NativeObject;
+use crate::interpreter::parser::resolver::SomeFun;
 use ordered_float::OrderedFloat;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -84,7 +85,7 @@ impl Object {
     }
 
     pub fn function(
-        stmt: Fun<Result<Object>>,
+        stmt: SomeFun,
         closure: Option<Arc<RwLock<Environment>>>,
         is_init: bool,
     ) -> Self {
@@ -133,11 +134,23 @@ impl Object {
             let Object::String(key) = key else {
                 return None;
             };
-            return Some(map.read().unwrap().get(&key).cloned().unwrap_or(Object::Nil));
+            return Some(
+                map.read()
+                    .unwrap()
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or(Object::Nil),
+            );
         }
         if let Object::List(list) = self {
             let Object::Number(i) = key else { return None };
-            return Some(list.read().unwrap().get(i as usize).unwrap_or(&Object::Nil).clone());
+            return Some(
+                list.read()
+                    .unwrap()
+                    .get(i as usize)
+                    .unwrap_or(&Object::Nil)
+                    .clone(),
+            );
         }
         None
     }
@@ -284,7 +297,9 @@ impl Display for Object {
             Object::List(list) => write!(
                 f,
                 "[{}]",
-                list.read().unwrap().iter()
+                list.read()
+                    .unwrap()
+                    .iter()
                     .map(|obj| match obj {
                         Object::String(str) => format!("{:?}", str),
                         _ => obj.to_string(),
@@ -295,7 +310,9 @@ impl Display for Object {
             Object::Dictionary(obj) => write!(
                 f,
                 "{{{}}}",
-                obj.read().unwrap().iter()
+                obj.read()
+                    .unwrap()
+                    .iter()
                     .map(|(key, obj)| match obj {
                         Object::String(str) => format!("{}: {:?}", key, str),
                         _ => format!("{}: {}", key, obj),

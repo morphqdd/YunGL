@@ -1,0 +1,16 @@
+export fun projectionMatrix(width, height) {
+    let aspect_ratio = height / width;
+
+    let fov = 3.141592 / 3.0;
+    let zfar = 1024.0;
+    let znear = 0.1;
+
+    let f = 1.0 / tan(fov / 2.0);
+
+    return [
+        [f *   aspect_ratio   ,    0.0,              0.0              ,   0.0],
+        [         0.0         ,     f ,              0.0              ,   0.0],
+        [         0.0         ,    0.0,  (zfar+znear)/(zfar-znear)    ,   1.0],
+        [         0.0         ,    0.0, -(2.0*zfar*znear)/(zfar-znear),   0.0]
+    ];
+}

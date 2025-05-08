@@ -1,12 +1,12 @@
 use crate::interpreter::error::{InterpreterError, Result};
 use crate::interpreter::object::Object;
+use crate::rc;
 use glium::glutin::surface::WindowSurface;
 use glium::texture::RawImage2d;
 use glium::{Display, Texture2d};
 use image::RgbaImage;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use crate::rc;
 
 #[derive(Clone, Debug)]
 pub enum UniformValueWrapper {
@@ -57,7 +57,10 @@ impl UniformGenerator {
 
         let matrix = Object::Dictionary(Arc::new(RwLock::new(HashMap::from([
             ("type".to_string(), Object::String("mat4".to_string())),
-            ("value".to_string(), Object::List(rc!(RwLock::new(identity_matrix.clone())))),
+            (
+                "value".to_string(),
+                Object::List(rc!(RwLock::new(identity_matrix.clone()))),
+            ),
         ]))));
         Object::Dictionary(Arc::new(RwLock::new(HashMap::from([
             (
@@ -111,7 +114,9 @@ impl UniformGenerator {
                     "Uniforms must be a dictionary".into(),
                 ));
             }
-        }.read().unwrap();
+        }
+        .read()
+        .unwrap();
         let Object::Dictionary(common_uniforms) = self.default.clone() else {
             panic!("Expected dictionary")
         };
@@ -128,7 +133,9 @@ impl UniformGenerator {
                         "Uniform must be a dictionary".into(),
                     ));
                 }
-            }.read().unwrap();
+            }
+            .read()
+            .unwrap();
 
             let uniform_type = match uniform_dict.get("type") {
                 Some(Object::String(s)) => s,

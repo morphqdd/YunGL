@@ -118,124 +118,131 @@ impl ApplicationHandler<InterpreterEvent> for App {
         const DATA: &str = "data";
         const PRIMITIVE: &str = "primitive";
 
-        if let InterpreterEvent::Render(List(list)) = event {
-            for elm in list.read().unwrap().iter() {
-                let Some(pipeline) = elm.get_field(Number(0.0)) else {
-                    continue;
-                };
-                let Some(vertex) = elm.get_field(Number(1.0)) else {
-                    continue;
-                };
+        match event {
+            InterpreterEvent::Render(List(list)) => {
+                for elm in list.read().unwrap().iter() {
+                    let Some(pipeline) = elm.get_field(Number(0.0)) else {
+                        continue;
+                    };
+                    let Some(vertex) = elm.get_field(Number(1.0)) else {
+                        continue;
+                    };
 
-                let uniform = pipeline
-                    .get_field(ObjString(UNIFORM.into()))
-                    .unwrap_or(Dictionary(rc!(RwLock::new(HashMap::new()))));
+                    let uniform = pipeline
+                        .get_field(ObjString(UNIFORM.into()))
+                        .unwrap_or(Dictionary(rc!(RwLock::new(HashMap::new()))));
 
-                let layout_list = match vertex.get_field(ObjString(LAYOUT.into())) {
-                    Some(List(layout)) => layout,
-                    _ => continue,
-                };
+                    let layout_list = match vertex.get_field(ObjString(LAYOUT.into())) {
+                        Some(List(layout)) => layout,
+                        _ => continue,
+                    };
 
-                let layout_list = layout_list.read().unwrap();
+                    let layout_list = layout_list.read().unwrap();
 
-                let mut layout = Vec::with_capacity(layout_list.len());
-                let mut keys = Vec::with_capacity(layout_list.len() * 2);
+                    let mut layout = Vec::with_capacity(layout_list.len());
+                    let mut keys = Vec::with_capacity(layout_list.len() * 2);
 
-                for obj in layout_list.iter() {
-                    if let ObjString(s) = obj {
-                        layout.push(s.clone());
-                        match s.as_str() {
-                            "vec2" => keys.extend(["x", "y"]),
-                            "vec3" => keys.extend(["x", "y", "z"]),
-                            "uv" => keys.extend(["u", "v"]),
-                            "normal" => keys.extend(["nx", "ny", "nz"]),
-                            "color" => keys.extend(["r", "g", "b"]),
-                            _ => {}
-                        }
-                    }
-                }
-
-                let data_list = match vertex.get_field(ObjString(DATA.into())) {
-                    Some(List(data)) => data,
-                    _ => continue,
-                };
-
-                let data_list = data_list.read().unwrap();
-
-                let mut data = Vec::with_capacity(data_list.len() * keys.len());
-
-                for obj in data_list.iter() {
-                    if let Dictionary(fields) = obj {
-                        for &key in &keys {
-                            match fields.read().unwrap().get(key) {
-                                Some(Number(n)) => data.push(*n as f32),
-                                _ => panic!("Expected number for key {}", key),
+                    for obj in layout_list.iter() {
+                        if let ObjString(s) = obj {
+                            layout.push(s.clone());
+                            match s.as_str() {
+                                "vec2" => keys.extend(["x", "y"]),
+                                "vec3" => keys.extend(["x", "y", "z"]),
+                                "uv" => keys.extend(["u", "v"]),
+                                "normal" => keys.extend(["nx", "ny", "nz"]),
+                                "color" => keys.extend(["r", "g", "b"]),
+                                _ => {}
                             }
                         }
                     }
-                }
 
-                let raw_attrs = match pipeline.get_field(ObjString(ATTRIBUTES.into())) {
-                    Some(Dictionary(m)) => m,
-                    _ => rc!(RwLock::new(HashMap::new())),
-                };
+                    let data_list = match vertex.get_field(ObjString(DATA.into())) {
+                        Some(List(data)) => data,
+                        _ => continue,
+                    };
 
-                // 2. Соберём inputs и outputs
-                let mut attrs_in = HashMap::new();
-                let mut attrs_out = HashMap::new();
+                    let data_list = data_list.read().unwrap();
 
-                // Входные
-                if let Some(Dictionary(ins)) = raw_attrs.read().unwrap().get("in") {
-                    for (name, typ_obj) in ins.read().unwrap().iter() {
-                        if let String(s) = typ_obj {
-                            attrs_in.insert(name.clone(), s.clone());
+                    let mut data = Vec::with_capacity(data_list.len() * keys.len());
+
+                    for obj in data_list.iter() {
+                        if let Dictionary(fields) = obj {
+                            for &key in &keys {
+                                match fields.read().unwrap().get(key) {
+                                    Some(Number(n)) => data.push(*n as f32),
+                                    _ => panic!("Expected number for key {}", key),
+                                }
+                            }
                         }
                     }
-                }
-                // Выходные
-                if let Some(Dictionary(outs)) = raw_attrs.read().unwrap().get("out") {
-                    for (name, typ_obj) in outs.read().unwrap().iter() {
-                        if let String(s) = typ_obj {
-                            attrs_out.insert(name.clone(), s.clone());
+
+                    let raw_attrs = match pipeline.get_field(ObjString(ATTRIBUTES.into())) {
+                        Some(Dictionary(m)) => m,
+                        _ => rc!(RwLock::new(HashMap::new())),
+                    };
+
+                    // 2. Соберём inputs и outputs
+                    let mut attrs_in = HashMap::new();
+                    let mut attrs_out = HashMap::new();
+
+                    // Входные
+                    if let Some(Dictionary(ins)) = raw_attrs.read().unwrap().get("in") {
+                        for (name, typ_obj) in ins.read().unwrap().iter() {
+                            if let String(s) = typ_obj {
+                                attrs_in.insert(name.clone(), s.clone());
+                            }
                         }
                     }
-                }
+                    // Выходные
+                    if let Some(Dictionary(outs)) = raw_attrs.read().unwrap().get("out") {
+                        for (name, typ_obj) in outs.read().unwrap().iter() {
+                            if let String(s) = typ_obj {
+                                attrs_out.insert(name.clone(), s.clone());
+                            }
+                        }
+                    }
 
-                let uniforms = self
-                    .uniform_generator
-                    .write()
-                    .unwrap()
-                    .generate_uniforms(&uniform)
-                    .expect("Failed to generate uniforms");
+                    let uniforms = self
+                        .uniform_generator
+                        .write()
+                        .unwrap()
+                        .generate_uniforms(&uniform)
+                        .expect("Failed to generate uniforms");
 
-                let primitive = match pipeline.get_field(ObjString(PRIMITIVE.into())) {
-                    Some(String(m)) => m,
-                    _ => "triangleStrip".into(),
-                };
+                    let primitive = match pipeline.get_field(ObjString(PRIMITIVE.into())) {
+                        Some(String(m)) => m,
+                        _ => "triangleStrip".into(),
+                    };
 
-                //println!("DATA: {:?}", attrs_in);
+                    //println!("DATA: {:?}", attrs_in);
 
-                let render_statement = RenderStatement::new(
-                    &self.display,
-                    PipelineData {
-                        attributes: AttributeLayouts {
-                            inputs: attrs_in,
-                            outputs: attrs_out,
+                    let render_statement = RenderStatement::new(
+                        &self.display,
+                        PipelineData {
+                            attributes: AttributeLayouts {
+                                inputs: attrs_in,
+                                outputs: attrs_out,
+                            },
+                            uniforms,
                         },
-                        uniforms,
-                    },
-                    BuffersData { data, layout },
-                    primitive,
-                )
-                .expect("Failed to create render statement");
+                        BuffersData { data, layout },
+                        primitive,
+                    )
+                    .expect("Failed to create render statement");
 
-                // println!(
-                //     "Vertex: {}\nFragment: {}",
-                //     render_statement.vertex_shader, render_statement.fragment_shader
-                // );
+                    // println!(
+                    //     "Vertex: {}\nFragment: {}",
+                    //     render_statement.vertex_shader, render_statement.fragment_shader
+                    // );
 
-                self.render_statement = Some(render_statement);
+                    self.render_statement = Some(render_statement);
+                }
             }
+            InterpreterEvent::GetWindowDimensions(tx) => {
+                tx.send(self.window.inner_size().into()).unwrap();
+            }
+            InterpreterEvent::None => {}
+            _ => {}
         }
     }
 

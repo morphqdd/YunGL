@@ -74,6 +74,7 @@ pub enum ParserErrorType {
     ExpectedIdentAfterPipelineDecl,
     ExpectedLeftBraceBeforeObj,
     ExpectedIdentAfterBufferDecl,
+    ExpectedComma,
 }
 
 impl Display for ParserErrorType {
@@ -163,6 +164,7 @@ impl Display for ParserErrorType {
             ParserErrorType::ExpectedIdentAfterBufferDecl => {
                 write!(f, "Expected identifier after buffer declaration!")
             }
+            ParserErrorType::ExpectedComma => write!(f, "Expected ','!"),
         }
     }
 }

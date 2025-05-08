@@ -1,5 +1,8 @@
+use "utils/viewMatrix";
+use "utils/projectionMatrix";
+
 export class Cube {
-    init() {
+    init(viewM, projectionM, light) {
         self.pipeline = {
             attributes: {
                 in: {
@@ -7,13 +10,16 @@ export class Cube {
                     normal: "vec3"
                 },
                 out: {
-                    v_normal: "vec3"
+                    v_normal: "vec3",
+                    v_position: "vec3"
                 }
             },
             uniform: {
-                color: { type: "vec3", value: [0.8, 1.0, 1.0] },
+                color: { type: "vec3", value: [1, 1, 1] },
                 model: { type: "mat4", value: self._makeModel(0) },
-                u_light: { type: "vec3", value: [-1, 0.4, 0.9] }
+                u_light: { type: "vec3", value: light },
+                view: { type: "mat4", value: viewM},
+                projection: { type: "mat4", value: projectionM }
             },
             primitive: "triangles"
         };
@@ -75,7 +81,7 @@ export class Cube {
                     [ c + oc*0.5,   oc*0.5,     a*s, 0 ],
                     [   oc*0.5,   c + oc*0.5,  -a*s, 0 ],
                     [   -a*s,        a*s,        c,  0 ],
-                    [     0,          0,         0,  1 ]
+                    [     0,          0,         3,  1 ]
                 ];
     }
 

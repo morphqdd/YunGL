@@ -1,8 +1,8 @@
+use crate::interpreter::ast::expr::get::GetType;
 use crate::interpreter::ast::expr::{Expr, ExprVisitor};
 use crate::interpreter::scanner::token::Token;
 use crate::utils::next_id;
 use std::ops::Deref;
-use crate::interpreter::ast::expr::get::GetType;
 
 #[derive(Clone)]
 pub enum SetType<T: 'static> {

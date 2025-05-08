@@ -30,23 +30,21 @@ impl ShaderGenerator {
         shader.push_str("void main() {\n");
         let position_type = String::from("vec4");
         let position_type = attributes.inputs.get("position").unwrap_or(&position_type);
-        let transform = if uniforms.contains_key("model")
-            && uniforms.contains_key("view")
-            && uniforms.contains_key("projection")
-        {
-            "projection * view * model * "
+
+        if uniforms.contains_key("model") && uniforms.contains_key("view") {
+            shader.push_str("mat4 modelview = view * model;\n")
         } else {
-            ""
+            shader.push_str("mat4 modelview = model;\n")
         };
+        if attributes.inputs.contains_key("normal") && attributes.outputs.contains_key("v_normal") {
+            shader.push_str("    v_normal = transpose(inverse(mat3(modelview))) * normal;\n");
+        }
 
         if attributes.inputs.contains_key("color") && attributes.outputs.contains_key("v_color") {
             shader.push_str("    v_color = color;\n");
         }
 
-        if attributes.inputs.contains_key("normal") && attributes.outputs.contains_key("v_normal") {
-            shader.push_str("    v_normal = transpose(inverse(mat3(model))) * normal;\n");
-        }
-        //let transform = String::from("");
+        let transform = "projection * modelview * ";
         match position_type.as_str() {
             "vec2" => shader.push_str(&format!(
                 "    gl_Position = {}vec4(position, 0.0, 1.0);\n",
@@ -58,6 +56,10 @@ impl ShaderGenerator {
             )),
             "vec4" => shader.push_str(&format!("    gl_Position = {}{};\n", transform, "position")),
             _ => shader.push_str("    gl_Position = vec4(0.0, 0.0, 0.0, 1.0);\n"),
+        }
+
+        if attributes.outputs.contains_key("v_position") {
+            shader.push_str("    v_position = gl_Position.xyz / gl_Position.w;\n");
         }
 
         shader.push_str("}\n");
@@ -93,6 +95,7 @@ impl ShaderGenerator {
                 _ => {}
             }
         }
+
         shader.push_str("out vec4 out_color;\n");
         shader.push_str("void main() {\n");
         if has_texture && attributes.inputs.contains_key("uv") {
@@ -102,10 +105,18 @@ impl ShaderGenerator {
                 shader.push_str("    out_color = texture(tex, v_uv);\n");
             }
         } else if has_color && has_light {
-            shader.push_str("    float brightness = dot(normalize(v_normal), normalize(u_light));\n");
-            shader.push_str("    vec3 dark_color = color/2;\n");
-            shader.push_str("    vec3 regular_color = color;\n");
-            shader.push_str("    out_color = vec4(mix(dark_color, regular_color, brightness), 1.0);\n");
+            shader.push_str("    vec3 ambient_color = color/2;\n");
+            shader.push_str("    vec3 diffuse_color = color * vec3(0.4, 0.9, 0.5)/2;\n");
+            shader.push_str("    vec3 specular_color = 2.5 * vec3(0.4, 0.9, 0.5);\n");
+            shader.push_str(
+                "    float diffuse = max(dot(normalize(v_normal), normalize(u_light)), 0.0);\n",
+            );
+            shader.push_str("    vec3 camera_dir = normalize(-v_position);\n");
+            shader.push_str(
+                "    vec3 half_direction = normalize(normalize(u_light) + camera_dir);\n",
+            );
+            shader.push_str("    float specular = pow(max(dot(half_direction, normalize(v_normal)), 0.0), 16.0);\n");
+            shader.push_str("    out_color = vec4(ambient_color + diffuse * diffuse_color + specular * specular_color, 1.0);\n");
         } else if has_color {
             let mut color = "color".to_string();
             if attributes.outputs.contains_key("v_color") {

@@ -33,7 +33,9 @@ impl<T: 'static + Clone> Exporter<T> {
                         let path = self.path.parent().unwrap().join(path.to_owned() + ".yun");
                         let code = read_to_string(path).unwrap();
                         let tokens = Scanner::new(&code).scan_tokens()?;
-                        let exported_ast = self.sift(Parser::new(tokens).parse()?)?;
+                        let _ast = Parser::new(tokens).parse()?;
+                        let _ast = Exporter::new(self.path.clone(), _ast).resolve()?;
+                        let exported_ast = self.sift(_ast)?;
                         for stmt in exported_ast {
                             ast.push(stmt);
                         }

@@ -1,5 +1,6 @@
 use crate::b;
 use crate::interpreter::ast::expr::Expr;
+use crate::interpreter::ast::expr::anon_fun::AnonFun;
 use crate::interpreter::ast::expr::assignment::Assign;
 use crate::interpreter::ast::expr::binary::Binary;
 use crate::interpreter::ast::expr::call::Call;
@@ -167,7 +168,8 @@ where
         let mut params = vec![];
 
         if !self.check(TokenType::RightParen) {
-            params.push(self.consume(TokenType::Identifier, ParserErrorType::ExpectedParamName)?);
+            let param = self.consume(TokenType::Identifier, ParserErrorType::ExpectedParamName)?;
+            params.push(param);
             while self.check(TokenType::Comma) {
                 if params.len() >= 255 {
                     return Err(ParserError::new(
@@ -176,8 +178,10 @@ where
                     )
                     .into());
                 }
-                params
-                    .push(self.consume(TokenType::Identifier, ParserErrorType::ExpectedParamName)?);
+                self.consume(TokenType::Comma, ParserErrorType::ExpectedComma)?;
+                let param =
+                    self.consume(TokenType::Identifier, ParserErrorType::ExpectedParamName)?;
+                params.push(param);
             }
         }
 
@@ -465,7 +469,10 @@ where
                 expr = b!(Get::new(GetType::Name(name), expr))
             } else if self._match(vec![TokenType::LeftBracket]) {
                 let index = self.expression()?;
-                let token = self.consume(TokenType::RightBracket, ParserErrorType::ExpectedRightBracket)?;
+                let token = self.consume(
+                    TokenType::RightBracket,
+                    ParserErrorType::ExpectedRightBracket,
+                )?;
                 expr = b!(Get::new(GetType::Index(token, index), expr))
             } else {
                 break;
@@ -547,9 +554,54 @@ where
             return self.obj();
         }
 
+        if self._match(vec![TokenType::Fun]) {
+            return self.anon_fun();
+        }
+
         Err(self
             .error(self.peek(), ParserErrorType::ExpectedExpression)
             .into())
+    }
+
+    fn anon_fun(&mut self) -> Result<Box<dyn Expr<T>>> {
+        let name = self.previous();
+
+        self.consume(
+            TokenType::LeftParen,
+            ParserErrorType::ExpectedLeftParenAfterFunIdent,
+        )?;
+
+        let mut params = vec![];
+
+        if !self.check(TokenType::RightParen) {
+            let param = self.consume(TokenType::Identifier, ParserErrorType::ExpectedParamName)?;
+            params.push(param);
+            while self.check(TokenType::Comma) {
+                if params.len() >= 255 {
+                    return Err(ParserError::new(
+                        self.peek(),
+                        ParserErrorType::CountOfParamsGreaterThen255,
+                    )
+                    .into());
+                }
+                self.consume(TokenType::Comma, ParserErrorType::ExpectedComma)?;
+                let param =
+                    self.consume(TokenType::Identifier, ParserErrorType::ExpectedParamName)?;
+                params.push(param);
+            }
+        }
+
+        self.consume(
+            TokenType::RightParen,
+            ParserErrorType::ExpectedRightParenAfterParams,
+        )?;
+        self.consume(
+            TokenType::LeftBrace,
+            ParserErrorType::ExpectedLeftBraceBeforeBody,
+        )?;
+
+        let body = self.block_statement()?;
+        Ok(b!(AnonFun::new(name, params, body)))
     }
 
     fn obj(&mut self) -> Result<Box<dyn Expr<T>>> {

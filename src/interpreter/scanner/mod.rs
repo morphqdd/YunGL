@@ -72,6 +72,7 @@ impl Scanner {
             self.line,
             self.pos_in_line + 1,
         ));
+
         Ok(self.tokens.clone())
     }
 
