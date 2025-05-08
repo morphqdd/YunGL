@@ -5,7 +5,7 @@ use crate::interpreter::object::callable::Callable;
 use crate::interpreter::render_statement::RenderStatement;
 use crate::interpreter::render_statement::buffers_data::BuffersData;
 use crate::interpreter::render_statement::pipeline_data::{AttributeLayouts, PipelineData};
-use crate::interpreter::render_statement::uniform_generator::UniformGenerator;
+use crate::interpreter::render_statement::uniform_generator::{UniformGenerator, UniformValueWrapper};
 use crate::rc;
 use glium::glutin::surface::WindowSurface;
 use glium::index::{NoIndices, PrimitiveType};
@@ -14,7 +14,7 @@ use glium::winit::event::KeyEvent;
 use glium::winit::event::{ElementState, StartCause, WindowEvent};
 use glium::winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use glium::winit::window::{Window, WindowId};
-use glium::{Depth, DepthTest, Display, DrawParameters, Surface};
+use glium::{Depth, DepthTest, Display, DrawParameters, Program, Surface};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use notify_debouncer_mini::{DebounceEventResult, DebouncedEvent, Debouncer, new_debouncer};
 use std::collections::HashMap;
@@ -25,6 +25,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, RwLock, mpsc};
 use std::time::Duration;
+use glium::uniforms::DynamicUniforms;
 
 #[derive(Debug)]
 pub enum AppEvent {
@@ -42,6 +43,7 @@ pub struct App {
     watcher: Arc<Debouncer<RecommendedWatcher>>,
     rx_restart: Arc<Mutex<Receiver<()>>>,
     event_channel: (Sender<AppEvent>, Arc<Mutex<Receiver<AppEvent>>>),
+    program: Option<Program>
 }
 
 impl App {
@@ -54,7 +56,7 @@ impl App {
         let path_arc = rc!(path.clone());
         let (tx, rx) = mpsc::channel();
         let mut debouncer = new_debouncer(
-            Duration::from_millis(100),
+            Duration::from_millis(1000),
             move |event: DebounceEventResult| match event {
                 Ok(_) => {
                     tx.send(()).unwrap();
@@ -80,6 +82,7 @@ impl App {
             watcher: rc!(debouncer),
             rx_restart: rc!(Mutex::new(rx)),
             event_channel: (tx_event, rc!((Mutex::new(rx_event)))),
+            program: None,
         }
     }
 }
@@ -104,7 +107,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                                 return;
                             }
                             Err(err) => {
-                                println!("{}", err);
+                                println!("{:?}", err);
                                 exit(65);
                             }
                         }
@@ -153,6 +156,8 @@ impl ApplicationHandler<InterpreterEvent> for App {
         const LAYOUT: &str = "layout";
         const DATA: &str = "data";
         const PRIMITIVE: &str = "primitive";
+        const VERTEX_SHADER: &str = "vertex";
+        const FRAGMENT_SHADER: &str = "fragment";
 
         match event {
             InterpreterEvent::Render(List(list)) => {
@@ -250,8 +255,20 @@ impl ApplicationHandler<InterpreterEvent> for App {
 
                     //println!("DATA: {:?}", attrs_in);
 
+                    let vertex_shader = match pipeline.get_field(ObjString(VERTEX_SHADER.into())) {
+                        Some(Object::String(m)) => Some(m),
+                        _ => None,
+                    };
+
+                    let fragment_shader = match pipeline.get_field(ObjString(FRAGMENT_SHADER.into())) {
+                        Some(Object::String(m)) => Some(m),
+                        _ => None,
+                    };
+
                     let render_statement = RenderStatement::new(
                         &self.display,
+                        vertex_shader,
+                        fragment_shader,
                         PipelineData {
                             attributes: AttributeLayouts {
                                 inputs: attrs_in,
@@ -295,15 +312,28 @@ impl ApplicationHandler<InterpreterEvent> for App {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::RedrawRequested => {
                 if let Some(render_statement) = &self.render_statement {
-                    let program = render_statement.build_program(&self.display).unwrap();
+                    let mut uniforms = DynamicUniforms::new();
+
+                    for (key, uniform) in &render_statement.uniforms {
+                        uniforms.add(&key, match uniform {
+                            UniformValueWrapper::Float(num) => num,
+                            UniformValueWrapper::Vec3(vec) => vec,
+                            UniformValueWrapper::Mat4(mat) => mat,
+                            UniformValueWrapper::Texture(_) => panic!()
+                        })
+                    }
+
+                    if self.program.is_none() {
+                        self.program = Some(render_statement.build_program(&self.display).unwrap());
+                    }
                     let mut target = self.display.draw();
                     target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
                     target
                         .draw(
                             &render_statement.vertex_buffer,
                             &NoIndices(render_statement.primitive_type),
-                            &program,
-                            &render_statement.uniforms,
+                            self.program.as_ref().unwrap(),
+                            &uniforms,
                             &DrawParameters {
                                 depth: Depth {
                                     test: DepthTest::IfLessOrEqual,

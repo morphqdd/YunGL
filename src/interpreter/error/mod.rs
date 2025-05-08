@@ -51,6 +51,7 @@ impl From<String> for InterpreterError {
 
 impl From<ParseFloatError> for InterpreterError {
     fn from(value: ParseFloatError) -> Self {
+        println!("HERE");
         Self::Custom(value.to_string())
     }
 }

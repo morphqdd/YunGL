@@ -171,12 +171,15 @@ impl Scanner {
     }
 
     fn string(&mut self) -> Result<()> {
-        while self.peek() != '"' && !self.is_at_end() {
-            if self.peek() == '\n' {
+        let mut ch = self.peek();
+        while ch != '"' && !self.is_at_end() {
+            if ch == '\n' {
                 self.line += 1;
                 self.pos_in_line = 1;
             }
             self.advance();
+            ch = self.peek();
+            //println!("character: {} {}", ch, ch_);
         }
 
         if self.is_at_end() {
@@ -190,6 +193,7 @@ impl Scanner {
 
         self.advance();
         let value = self.source[self.start + 1..self.current - 1].replace("\\n", "\n");
+        println!("{}", value);
         self.add_token(TokenType::String, Some(Object::String(value)));
         Ok(())
     }
@@ -216,10 +220,15 @@ impl Scanner {
                 ch = self.peek();
             }
         }
+        //print!("[{}:{}]", self.line, self.pos_in_line);
+        //println!("number: {}", self.source[self.start..self.current].to_string());
         self.add_token(
             TokenType::Number,
             Some(Object::Number(
-                self.source[self.start..self.current].to_string().parse()?,
+                self.source[self.start..self.current].to_string().parse().map_err(|e| {
+                    println!("{:?}", self.tokens);
+                    panic!("{e}");
+                }).unwrap(),
             )),
         );
         Ok(())

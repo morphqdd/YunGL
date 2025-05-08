@@ -1,37 +1,19 @@
-export fun viewMatrix(position, direction, up) {
-    let f_ = direction;
-    let len_ = f_[0] * f_[0] + f_[1] * f_[1] + f_[2] * f_[2];
-    let len = sqrt(len_);
-    let f = [f_[0] / len, f_[1] / len, f_[2] / len];
+use "utils/math";
 
-    let s = [
-        up[1] * f[2] - up[2] * f[1],
-        up[2] * f[0] - up[0] * f[2],
-        up[0] * f[1] - up[1] * f[0]
-    ];
-
-    let len_ = s[0] * s[0] + s[1] * s[1] + s[2] * s[2];
-    let len = sqrt(len_);
-    let sNorm = [s[0] / len, s[1] / len, s[2] / len];
-
-    let u = [
-        f[1] * sNorm[2] - f[2] * sNorm[1],
-        f[2] * sNorm[0] - f[0] * sNorm[2],
-        f[0] * sNorm[1] - f[1] * sNorm[0]
-    ];
-
-    let p = [
-        -position[0] * sNorm[0] - position[1] * sNorm[1] - position[2] * sNorm[2],
-        -position[0] * u[0] - position[1] * u[1] - position[2] * u[2],
-        -position[0] * f[0] - position[1] * f[1] - position[2] * f[2]
-    ];
+export fun viewMatrix(eye, center, up) {
+    let f = normalize(subtract(center, eye));
+    let s = normalize(cross(f, up));
+    let u = cross(s, f);
 
     return [
-        [sNorm[0], u[0], f[0], 0.0],
-        [sNorm[1], u[1], f[1], 0.0],
-        [sNorm[2], u[2], f[2], 0.0],
-        [p[0], p[1], p[2], 1.0]
+      [ s[0],  u[0], -f[0], 0.0 ],
+      [ s[1],  u[1], -f[1], 0.0 ],
+      [ s[2],  u[2], -f[2], 0.0 ],
+      [
+        -dot(s, eye),
+        -dot(u, eye),
+         dot(f, eye),
+        1.0
+      ]
     ];
 }
-
-print viewMatrix([2.0, -1.0, 1.0], [-2.0, 1.0, 1.0], [0.0, 1.0, 0.0]);
