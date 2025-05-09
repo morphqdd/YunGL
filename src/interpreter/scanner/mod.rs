@@ -225,10 +225,14 @@ impl Scanner {
         self.add_token(
             TokenType::Number,
             Some(Object::Number(
-                self.source[self.start..self.current].to_string().parse().map_err(|e| {
-                    println!("{:?}", self.tokens);
-                    panic!("{e}");
-                }).unwrap(),
+                self.source[self.start..self.current]
+                    .to_string()
+                    .parse()
+                    .map_err(|e| {
+                        println!("{:?}", self.tokens);
+                        panic!("{e}");
+                    })
+                    .unwrap(),
             )),
         );
         Ok(())

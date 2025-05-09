@@ -13,7 +13,6 @@ pub enum UniformValueWrapper {
     Float(f32),
     Vec3([f32; 3]),
     Mat4([[f32; 4]; 4]),
-    Texture(&'static Texture2d),
 }
 
 pub struct UniformGenerator {
@@ -225,34 +224,6 @@ impl UniformGenerator {
 
                     uniform_values.insert(name.clone(), UniformValueWrapper::Mat4(mat4_value));
                 }
-                // "sampler2D" => {
-                //     let texture_path = match value {
-                //         Object::String(s) => s,
-                //         _ => {
-                //             return Err(InterpreterError::Custom(
-                //                 "Sampler2D value must be a string".into(),
-                //             ));
-                //         }
-                //     };
-                //     let format = if texture_path.ends_with(".png") {
-                //         ImageFormat::Png
-                //     } else if texture_path.ends_with(".jpg") || texture_path.ends_with(".jpeg") {
-                //         ImageFormat::Jpeg
-                //     } else {
-                //         return Err(InterpreterError::Custom("Unsupported format".into()));
-                //     };
-                //     let image = load(
-                //         std::io::Cursor::new(&read_to_string(texture_path).unwrap().as_bytes()),
-                //         ImageFormat::Png,
-                //     )
-                //     .unwrap()
-                //     .to_rgba8();
-                //     let texture = load_texture(display, image)?;
-                //     uniform_values.insert(
-                //         name,
-                //         UniformValueWrapper::Texture(Box::leak(Box::new(texture))),
-                //     );
-                // }
                 _ => {
                     return Err(InterpreterError::Custom(format!(
                         "Unsupported uniform type: {}",

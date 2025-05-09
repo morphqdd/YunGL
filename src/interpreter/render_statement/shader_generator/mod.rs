@@ -87,10 +87,6 @@ impl ShaderGenerator {
         // Юниформы
         for (name, uniform_type) in uniforms {
             match (name.as_str(), uniform_type) {
-                ("tex", UniformValueWrapper::Texture(_)) => {
-                    has_texture = true;
-                    shader.push_str("uniform sampler2D tex;\n");
-                }
                 ("color", UniformValueWrapper::Vec3(_)) => {
                     has_color = true;
                     shader.push_str("uniform vec3 color;\n");
@@ -121,7 +117,10 @@ impl ShaderGenerator {
         shader.push_str("out vec4 out_color;\n");
         shader.push_str("void main() {\n");
 
-        if has_light && attributes.outputs.contains_key("v_normal") && attributes.outputs.contains_key("v_position") {
+        if has_light
+            && attributes.outputs.contains_key("v_normal")
+            && attributes.outputs.contains_key("v_position")
+        {
             shader.push_str("    vec3 norm = normalize(v_normal);\n");
             shader.push_str("    vec3 light_dir = normalize(u_light - v_position);\n");
 
@@ -136,7 +135,9 @@ impl ShaderGenerator {
             if has_view_pos && has_specular {
                 shader.push_str("    vec3 view_dir = normalize(u_view_pos - v_position);\n");
                 shader.push_str("    vec3 halfway_dir = normalize(light_dir + view_dir);\n");
-                shader.push_str("    float spec = pow(max(dot(norm, halfway_dir), 0.0), shininess);\n");
+                shader.push_str(
+                    "    float spec = pow(max(dot(norm, halfway_dir), 0.0), shininess);\n",
+                );
                 shader.push_str("    vec3 specular = specular_strength * spec * u_light_color;\n");
             } else {
                 shader.push_str("    vec3 specular = vec3(0.0);\n");
@@ -163,5 +164,4 @@ impl ShaderGenerator {
         shader.push_str("}\n");
         shader
     }
-
 }

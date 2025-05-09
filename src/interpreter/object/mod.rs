@@ -262,6 +262,12 @@ impl PartialEq<Self> for Object {
             (Object::Callable(callable), Object::Callable(callable2)) => callable == callable2,
             (Object::Arc(rc), _) => &rc.clone_into_rc() == other,
             (_, Object::Arc(rc)) => self == &rc.clone_into_rc(),
+            (Object::Dictionary(dict), Object::Dictionary(dict2)) => {
+                *dict.read().unwrap() == *dict2.read().unwrap()
+            }
+            (Object::List(dict), Object::List(dict2)) => {
+                *dict.read().unwrap() == *dict2.read().unwrap()
+            }
             _ => false,
         }
     }

@@ -46,10 +46,7 @@ impl RenderStatement {
             vertex_shader: if let Some(vertex_shader) = vertex_shader {
                 vertex_shader
             } else {
-                ShaderGenerator::generate_vertex_shader(
-                    &pipeline_data.attributes,
-                    &uniform_values,
-                )
+                ShaderGenerator::generate_vertex_shader(&pipeline_data.attributes, &uniform_values)
             },
             fragment_shader: if let Some(fragment_shader) = fragment_shader {
                 fragment_shader

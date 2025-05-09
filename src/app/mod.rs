@@ -1,3 +1,4 @@
+use crate::app::packet::Packet;
 use crate::interpreter::Interpreter;
 use crate::interpreter::event::InterpreterEvent;
 use crate::interpreter::object::Object;
@@ -5,10 +6,15 @@ use crate::interpreter::object::callable::Callable;
 use crate::interpreter::render_statement::RenderStatement;
 use crate::interpreter::render_statement::buffers_data::BuffersData;
 use crate::interpreter::render_statement::pipeline_data::{AttributeLayouts, PipelineData};
-use crate::interpreter::render_statement::uniform_generator::{UniformGenerator, UniformValueWrapper};
+use crate::interpreter::render_statement::shader_generator::ShaderGenerator;
+use crate::interpreter::render_statement::uniform_generator::{
+    UniformGenerator, UniformValueWrapper,
+};
+use crate::interpreter::render_statement::vertex::create_vertex_buffer;
 use crate::rc;
 use glium::glutin::surface::WindowSurface;
 use glium::index::{NoIndices, PrimitiveType};
+use glium::uniforms::DynamicUniforms;
 use glium::winit::application::ApplicationHandler;
 use glium::winit::event::KeyEvent;
 use glium::winit::event::{ElementState, StartCause, WindowEvent};
@@ -17,15 +23,18 @@ use glium::winit::window::{Window, WindowId};
 use glium::{Depth, DepthTest, Display, DrawParameters, Program, Surface};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use notify_debouncer_mini::{DebounceEventResult, DebouncedEvent, Debouncer, new_debouncer};
+use rayon::iter::ParallelIterator;
+use rayon::prelude::IntoParallelRefIterator;
 use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut, Index};
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, RwLock, mpsc};
 use std::time::Duration;
-use glium::uniforms::DynamicUniforms;
+
+pub mod packet;
 
 #[derive(Debug)]
 pub enum AppEvent {
@@ -36,14 +45,14 @@ pub enum AppEvent {
 pub struct App {
     window: Arc<Window>,
     display: Arc<Display<WindowSurface>>,
-    render_statement: Option<RenderStatement>,
+    render_statement: Vec<RenderStatement>,
     interpreter: Arc<Mutex<Interpreter>>,
     uniform_generator: Arc<RwLock<UniformGenerator>>,
     path: Arc<PathBuf>,
     watcher: Arc<Debouncer<RecommendedWatcher>>,
     rx_restart: Arc<Mutex<Receiver<()>>>,
     event_channel: (Sender<AppEvent>, Arc<Mutex<Receiver<AppEvent>>>),
-    program: Option<Program>
+    program: Option<Program>,
 }
 
 impl App {
@@ -76,7 +85,7 @@ impl App {
             window,
             display,
             interpreter: rc!(Mutex::new(Interpreter::new(proxy.clone(), path.clone()))),
-            render_statement: None,
+            render_statement: vec![],
             uniform_generator: rc!(RwLock::new(UniformGenerator::new())),
             path: path_arc,
             watcher: rc!(debouncer),
@@ -107,7 +116,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                                 return;
                             }
                             Err(err) => {
-                                println!("{:?}", err);
+                                println!("{}", err);
                                 exit(65);
                             }
                         }
@@ -161,88 +170,136 @@ impl ApplicationHandler<InterpreterEvent> for App {
 
         match event {
             InterpreterEvent::Render(List(list)) => {
-                for elm in list.read().unwrap().iter() {
+                let packets = Arc::new(RwLock::new(Vec::new()));
+                let uniform_generator = self.uniform_generator.clone();
+                let mut vec_vertex = rc!(RwLock::new(Vec::new()));
+                let mut vec_vertex_data = rc!(RwLock::new(Vec::<(Vec<f32>, Vec<String>)>::new()));
+                let mut vec_attrs = rc!(RwLock::new(Vec::new()));
+                let mut vec_attrs_data = rc!(RwLock::new(Vec::<AttributeLayouts>::new()));
+                list.read().unwrap().par_iter().for_each(|elm| {
                     let Some(pipeline) = elm.get_field(Number(0.0)) else {
-                        continue;
+                        return;
                     };
                     let Some(vertex) = elm.get_field(Number(1.0)) else {
-                        continue;
+                        return;
+                    };
+
+                    let (data, layout) = if vec_vertex.read().unwrap().contains(&vertex) {
+                        let (i, _) = vec_vertex
+                            .read()
+                            .unwrap()
+                            .iter()
+                            .enumerate()
+                            .find(|(i, x)| x == &&vertex)
+                            .unwrap();
+                        vec_vertex_data.read().unwrap().get(i).unwrap().clone()
+                    } else {
+                        let layout_list = match vertex.get_field(ObjString(LAYOUT.into())) {
+                            Some(List(layout)) => layout,
+                            _ => return,
+                        };
+
+                        let layout_list = layout_list.read().unwrap();
+
+                        let mut layout = Vec::with_capacity(layout_list.len());
+                        let mut keys = Vec::with_capacity(layout_list.len() * 2);
+
+                        for obj in layout_list.iter() {
+                            if let ObjString(s) = obj {
+                                layout.push(s.clone());
+                                match s.as_str() {
+                                    "vec2" => keys.extend(["x", "y"]),
+                                    "vec3" => keys.extend(["x", "y", "z"]),
+                                    "uv" => keys.extend(["u", "v"]),
+                                    "normal" => keys.extend(["nx", "ny", "nz"]),
+                                    "color" => keys.extend(["r", "g", "b"]),
+                                    _ => {}
+                                }
+                            }
+                        }
+
+                        let data_list = match vertex.get_field(ObjString(DATA.into())) {
+                            Some(List(data)) => data,
+                            _ => return,
+                        };
+
+                        let data_list = data_list.read().unwrap();
+
+                        let mut data = Vec::with_capacity(data_list.len() * keys.len());
+
+                        for obj in data_list.iter() {
+                            if let Dictionary(fields) = obj {
+                                for &key in &keys {
+                                    match fields.read().unwrap().get(key) {
+                                        Some(Number(n)) => data.push(*n as f32),
+                                        _ => panic!("Expected number for key {}", key),
+                                    }
+                                }
+                            }
+                        }
+
+                        vec_vertex.write().unwrap().push(vertex.clone());
+                        vec_vertex_data
+                            .write()
+                            .unwrap()
+                            .push((data.clone(), layout.clone()));
+                        (data, layout)
                     };
 
                     let uniform = pipeline
                         .get_field(ObjString(UNIFORM.into()))
                         .unwrap_or(Dictionary(rc!(RwLock::new(HashMap::new()))));
 
-                    let layout_list = match vertex.get_field(ObjString(LAYOUT.into())) {
-                        Some(List(layout)) => layout,
-                        _ => continue,
+                    let raw_attrs_ = match pipeline.get_field(ObjString(ATTRIBUTES.into())) {
+                        Some(obj) => obj,
+                        _ => Dictionary(rc!(RwLock::new(HashMap::new()))),
                     };
 
-                    let layout_list = layout_list.read().unwrap();
+                    let attrs_layout = if vec_attrs.read().unwrap().contains(&raw_attrs_) {
+                        let (i, _) = vec_attrs
+                            .read()
+                            .unwrap()
+                            .iter()
+                            .enumerate()
+                            .find(|(i, x)| x == &&raw_attrs_)
+                            .unwrap();
+                        vec_attrs_data.read().unwrap().get(i).unwrap().clone()
+                    } else {
+                        let raw_attrs = match raw_attrs_.clone() {
+                            Dictionary(m) => m.clone(),
+                            _ => rc!(RwLock::new(HashMap::new())),
+                        };
 
-                    let mut layout = Vec::with_capacity(layout_list.len());
-                    let mut keys = Vec::with_capacity(layout_list.len() * 2);
+                        let mut attrs_in = HashMap::new();
+                        let mut attrs_out = HashMap::new();
 
-                    for obj in layout_list.iter() {
-                        if let ObjString(s) = obj {
-                            layout.push(s.clone());
-                            match s.as_str() {
-                                "vec2" => keys.extend(["x", "y"]),
-                                "vec3" => keys.extend(["x", "y", "z"]),
-                                "uv" => keys.extend(["u", "v"]),
-                                "normal" => keys.extend(["nx", "ny", "nz"]),
-                                "color" => keys.extend(["r", "g", "b"]),
-                                _ => {}
-                            }
-                        }
-                    }
-
-                    let data_list = match vertex.get_field(ObjString(DATA.into())) {
-                        Some(List(data)) => data,
-                        _ => continue,
-                    };
-
-                    let data_list = data_list.read().unwrap();
-
-                    let mut data = Vec::with_capacity(data_list.len() * keys.len());
-
-                    for obj in data_list.iter() {
-                        if let Dictionary(fields) = obj {
-                            for &key in &keys {
-                                match fields.read().unwrap().get(key) {
-                                    Some(Number(n)) => data.push(*n as f32),
-                                    _ => panic!("Expected number for key {}", key),
+                        if let Some(Dictionary(ins)) = raw_attrs.read().unwrap().get("in") {
+                            for (name, typ_obj) in ins.read().unwrap().iter() {
+                                if let Object::String(s) = typ_obj {
+                                    attrs_in.insert(name.clone(), s.clone());
                                 }
                             }
                         }
-                    }
 
-                    let raw_attrs = match pipeline.get_field(ObjString(ATTRIBUTES.into())) {
-                        Some(Dictionary(m)) => m,
-                        _ => rc!(RwLock::new(HashMap::new())),
+                        if let Some(Dictionary(outs)) = raw_attrs.read().unwrap().get("out") {
+                            for (name, typ_obj) in outs.read().unwrap().iter() {
+                                if let Object::String(s) = typ_obj {
+                                    attrs_out.insert(name.clone(), s.clone());
+                                }
+                            }
+                        }
+
+                        let attrs = AttributeLayouts {
+                            inputs: attrs_in,
+                            outputs: attrs_out,
+                        };
+
+                        vec_attrs.write().unwrap().push(raw_attrs_);
+                        vec_attrs_data.write().unwrap().push(attrs.clone());
+                        attrs
                     };
 
-                    let mut attrs_in = HashMap::new();
-                    let mut attrs_out = HashMap::new();
-
-                    if let Some(Dictionary(ins)) = raw_attrs.read().unwrap().get("in") {
-                        for (name, typ_obj) in ins.read().unwrap().iter() {
-                            if let Object::String(s) = typ_obj {
-                                attrs_in.insert(name.clone(), s.clone());
-                            }
-                        }
-                    }
-
-                    if let Some(Dictionary(outs)) = raw_attrs.read().unwrap().get("out") {
-                        for (name, typ_obj) in outs.read().unwrap().iter() {
-                            if let Object::String(s) = typ_obj {
-                                attrs_out.insert(name.clone(), s.clone());
-                            }
-                        }
-                    }
-
-                    let uniforms = self
-                        .uniform_generator
+                    let uniforms = uniform_generator
                         .write()
                         .unwrap()
                         .generate_uniforms(&uniform)
@@ -260,33 +317,53 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         _ => None,
                     };
 
-                    let fragment_shader = match pipeline.get_field(ObjString(FRAGMENT_SHADER.into())) {
-                        Some(Object::String(m)) => Some(m),
-                        _ => None,
-                    };
-
-                    let render_statement = RenderStatement::new(
-                        &self.display,
-                        vertex_shader,
-                        fragment_shader,
-                        PipelineData {
-                            attributes: AttributeLayouts {
-                                inputs: attrs_in,
-                                outputs: attrs_out,
-                            },
-                            uniforms,
-                        },
-                        BuffersData { data, layout },
-                        primitive,
-                    )
-                    .expect("Failed to create render statement");
+                    let fragment_shader =
+                        match pipeline.get_field(ObjString(FRAGMENT_SHADER.into())) {
+                            Some(Object::String(m)) => Some(m),
+                            _ => None,
+                        };
 
                     // println!(
                     //     "Vertex: {}\nFragment: {}",
                     //     render_statement.vertex_shader, render_statement.fragment_shader
                     // );
 
-                    self.render_statement = Some(render_statement);
+                    packets.write().unwrap().push(Packet {
+                        vertex_shader: if let Some(vertex_shader) = vertex_shader {
+                            vertex_shader
+                        } else {
+                            ShaderGenerator::generate_vertex_shader(&attrs_layout, &uniforms)
+                        },
+                        fragment_shader: if let Some(fragment_shader) = fragment_shader {
+                            fragment_shader
+                        } else {
+                            ShaderGenerator::generate_fragment_shader(&attrs_layout, &uniforms)
+                        },
+                        buffer_data: BuffersData { data, layout },
+                        uniforms,
+                        primitive_type: match primitive.as_str() {
+                            "points" => PrimitiveType::Points,
+                            "lineStrip" => PrimitiveType::LineStrip,
+                            "triangleStrip" => PrimitiveType::TriangleStrip,
+                            "triangles" => PrimitiveType::TrianglesList,
+                            _ => PrimitiveType::TriangleStrip,
+                        },
+                    });
+                });
+
+                for packet in packets.write().unwrap().iter() {
+                    self.render_statement.push(RenderStatement {
+                        vertex_shader: packet.vertex_shader.clone(),
+                        fragment_shader: packet.fragment_shader.clone(),
+                        vertex_buffer: create_vertex_buffer(
+                            self.display.as_ref(),
+                            &packet.buffer_data.data[..],
+                            &packet.buffer_data.layout,
+                        )
+                        .unwrap(),
+                        uniforms: packet.uniforms.clone(),
+                        primitive_type: packet.primitive_type.clone(),
+                    });
                 }
             }
             InterpreterEvent::GetWindowDimensions(tx) => {
@@ -311,23 +388,26 @@ impl ApplicationHandler<InterpreterEvent> for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::RedrawRequested => {
-                if let Some(render_statement) = &self.render_statement {
+                let mut target = self.display.draw();
+                target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
+                for render_statement in &self.render_statement {
                     let mut uniforms = DynamicUniforms::new();
 
                     for (key, uniform) in &render_statement.uniforms {
-                        uniforms.add(&key, match uniform {
-                            UniformValueWrapper::Float(num) => num,
-                            UniformValueWrapper::Vec3(vec) => vec,
-                            UniformValueWrapper::Mat4(mat) => mat,
-                            UniformValueWrapper::Texture(_) => panic!()
-                        })
+                        uniforms.add(
+                            &key,
+                            match uniform {
+                                UniformValueWrapper::Float(num) => num,
+                                UniformValueWrapper::Vec3(vec) => vec,
+                                UniformValueWrapper::Mat4(mat) => mat,
+                            },
+                        )
                     }
 
                     if self.program.is_none() {
                         self.program = Some(render_statement.build_program(&self.display).unwrap());
                     }
-                    let mut target = self.display.draw();
-                    target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
+
                     target
                         .draw(
                             &render_statement.vertex_buffer,
@@ -344,8 +424,9 @@ impl ApplicationHandler<InterpreterEvent> for App {
                             },
                         )
                         .unwrap();
-                    target.finish().unwrap();
                 }
+                self.render_statement.clear();
+                target.finish().unwrap();
             }
             WindowEvent::Resized(size) => self.display.resize(size.into()),
             WindowEvent::KeyboardInput { event, .. } => {
@@ -358,7 +439,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
         }
     }
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if self.render_statement.is_some() {
+        if !self.render_statement.is_empty() {
             self.window.request_redraw();
             std::thread::sleep(std::time::Duration::from_millis(10));
         }

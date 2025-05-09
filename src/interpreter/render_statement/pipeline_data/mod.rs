@@ -6,7 +6,7 @@ pub struct PipelineData {
     pub uniforms: HashMap<String, UniformValueWrapper>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AttributeLayouts {
     pub inputs: HashMap<String, String>,
     pub outputs: HashMap<String, String>,

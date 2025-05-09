@@ -86,6 +86,7 @@ export class Cube {
         self.light_1 = light;
         self.light_2 = [-1, 1, 1];
         self.camera = camera;
+        self.position = [0,0,0];
 
         self.pipeline = {
             vertex: vertexShader,
@@ -164,6 +165,7 @@ export class Cube {
                     ],
                     layout: ["vec3", "normal"]
                 };
+
     }
 
     _makeModel(t) {
@@ -172,7 +174,7 @@ export class Cube {
             [2 * cos(t), 0, 2*sin(t), 0],
             [0, 2, 0, 0],
             [-2*sin(t), 0, 2*cos(t), 0],
-            [0, 0, 0, 1]
+            [self.position[0], self.position[1], self.position[2], 1]
         ];
 
 
@@ -190,5 +192,9 @@ export class Cube {
 
         self.pipeline.uniform.u_light_1.value = self.light_1;
         self.pipeline.uniform.u_light_2.value = self.light_2;
+    }
+
+    translate(coord) {
+        self.position = coord;
     }
 }
