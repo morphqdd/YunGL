@@ -53,6 +53,10 @@ pub struct App {
     rx_restart: Arc<Mutex<Receiver<()>>>,
     event_channel: (Sender<AppEvent>, Arc<Mutex<Receiver<AppEvent>>>),
     program: Option<Program>,
+    vec_vertex: Arc<RwLock<Vec<Object>>>,
+    vec_vertex_data: Arc<RwLock<Vec<(Vec<f32>, Vec<String>)>>>,
+    vec_attrs: Arc<RwLock<Vec<Object>>>,
+    vec_attrs_data: Arc<RwLock<Vec<AttributeLayouts>>>,
 }
 
 impl App {
@@ -92,6 +96,10 @@ impl App {
             rx_restart: rc!(Mutex::new(rx)),
             event_channel: (tx_event, rc!((Mutex::new(rx_event)))),
             program: None,
+            vec_vertex: rc!(RwLock::new(Vec::new())),
+            vec_vertex_data: rc!(RwLock::new(Vec::<(Vec<f32>, Vec<String>)>::new())),
+            vec_attrs: rc!(RwLock::new(Vec::new())),
+            vec_attrs_data: rc!(RwLock::new(Vec::<AttributeLayouts>::new())),
         }
     }
 }
@@ -167,15 +175,16 @@ impl ApplicationHandler<InterpreterEvent> for App {
         const PRIMITIVE: &str = "primitive";
         const VERTEX_SHADER: &str = "vertex";
         const FRAGMENT_SHADER: &str = "fragment";
+        const LIGHTS: &str = "lights";
 
         match event {
             InterpreterEvent::Render(List(list)) => {
                 let packets = Arc::new(RwLock::new(Vec::new()));
                 let uniform_generator = self.uniform_generator.clone();
-                let mut vec_vertex = rc!(RwLock::new(Vec::new()));
-                let mut vec_vertex_data = rc!(RwLock::new(Vec::<(Vec<f32>, Vec<String>)>::new()));
-                let mut vec_attrs = rc!(RwLock::new(Vec::new()));
-                let mut vec_attrs_data = rc!(RwLock::new(Vec::<AttributeLayouts>::new()));
+                let mut vec_vertex = self.vec_vertex.clone();
+                let mut vec_vertex_data = self.vec_vertex_data.clone();
+                let mut vec_attrs = self.vec_attrs.clone();
+                let mut vec_attrs_data = self.vec_attrs_data.clone();
                 list.read().unwrap().par_iter().for_each(|elm| {
                     let Some(pipeline) = elm.get_field(Number(0.0)) else {
                         return;
@@ -299,11 +308,44 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         attrs
                     };
 
-                    let uniforms = uniform_generator
+                    let mut uniforms = uniform_generator
                         .write()
                         .unwrap()
                         .generate_uniforms(&uniform)
                         .expect("Failed to generate uniforms");
+
+                    let lights = match pipeline.get_field(ObjString(LIGHTS.into())) {
+                        Some(Dictionary(lights)) => lights,
+                        _ => rc!(RwLock::new(HashMap::new()))
+                    };
+
+                    let mut light_data = Vec::new();
+
+                    for (name, obj) in lights.read().unwrap().iter() {
+                        let opt = match obj {
+                            Dictionary(l) => l.clone(),
+                            _ => panic!("Expected light options"),
+                        };
+                        let List(list) = opt.read().unwrap().get("position").clone().unwrap().clone() else { panic!("Expected list of positions"); };
+                        let mut pos = [0f32;3];
+                        for (i, num) in list.read().unwrap().iter().enumerate() {
+                            let Number(num) = *num else { panic!("Expected number"); };
+                            pos[i] = num as f32;
+                        }
+                        let position = UniformValueWrapper::Vec3(pos);
+                        uniforms.insert(format!("u_light_{}", name), position);
+
+                        let List(list) = opt.read().unwrap().get("color").clone().unwrap().clone() else { panic!("Expected list of positions"); };
+                        let mut color = [0f32;3];
+                        for (i, num) in list.read().unwrap().iter().enumerate() {
+                            let Number(num) = *num else { panic!("Expected number"); };
+                            color[i] = num as f32;
+                        }
+                        let color = UniformValueWrapper::Vec3(color);
+                        uniforms.insert(format!("u_light_color_{}", name), color);
+
+                        light_data.push((name.clone(), format!("u_light_{}", name), format!("u_light_color_{}", name)));
+                    }
 
                     let primitive = match pipeline.get_field(ObjString(PRIMITIVE.into())) {
                         Some(Object::String(m)) => m,
@@ -332,12 +374,16 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         vertex_shader: if let Some(vertex_shader) = vertex_shader {
                             vertex_shader
                         } else {
-                            ShaderGenerator::generate_vertex_shader(&attrs_layout, &uniforms)
+                            let vert = ShaderGenerator::generate_vertex_shader(&attrs_layout, &uniforms);
+                            //println!("Generated vertex shader: {}", vert);
+                            vert
                         },
                         fragment_shader: if let Some(fragment_shader) = fragment_shader {
                             fragment_shader
                         } else {
-                            ShaderGenerator::generate_fragment_shader(&attrs_layout, &uniforms)
+                            let frag = ShaderGenerator::generate_fragment_shader(&attrs_layout, &uniforms, &light_data);
+                            //println!("Generated fragment shader: {}", frag);
+                            frag
                         },
                         buffer_data: BuffersData { data, layout },
                         uniforms,
@@ -441,7 +487,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if !self.render_statement.is_empty() {
             self.window.request_redraw();
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(10));
         }
     }
 }

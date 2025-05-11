@@ -31,20 +31,32 @@ impl ShaderGenerator {
         let position_type = String::from("vec4");
         let position_type = attributes.inputs.get("position").unwrap_or(&position_type);
 
-        if uniforms.contains_key("model") && uniforms.contains_key("view") {
-            shader.push_str("mat4 modelview = view * model;\n")
-        } else {
-            shader.push_str("mat4 modelview = model;\n")
-        };
-        if attributes.inputs.contains_key("normal") && attributes.outputs.contains_key("v_normal") {
-            shader.push_str("    v_normal = transpose(inverse(mat3(view * model))) * normal;\n");
+
+        if uniforms.contains_key("model") && attributes.inputs.contains_key("position") {
+            shader.push_str("   vec4 world_pos = model * position;\n");
+            shader.push_str("   v_world_pos = world_pos.xyz;\n");
+        }
+
+        if attributes.inputs.contains_key("normal") && attributes.outputs.contains_key("v_world_normal") {
+            shader.push_str("   v_world_normal = transpose(inverse(mat3(model))) * normal;\n");
         }
 
         if attributes.inputs.contains_key("color") && attributes.outputs.contains_key("v_color") {
-            shader.push_str("    v_color = color;\n");
+            shader.push_str("   v_color = color;\n");
         }
 
-        let transform = "projection * view * model * ";
+        let mut transform = String::from("");
+        if uniforms.contains_key("projection") {
+            transform += "projection * ";
+        }
+        if uniforms.contains_key("view") {
+            transform += "view * ";
+        }
+        if uniforms.contains_key("model") && attributes.inputs.contains_key("position") {
+            transform += "world_pos";
+        } else if attributes.inputs.contains_key("position") {
+            transform += "position";
+        }
         match position_type.as_str() {
             "vec2" => shader.push_str(&format!(
                 "    gl_Position = {}vec4(position, 0.0, 1.0);\n",
@@ -54,12 +66,8 @@ impl ShaderGenerator {
                 "    gl_Position = {}vec4(position, 1.0);\n",
                 transform
             )),
-            "vec4" => shader.push_str(&format!("    gl_Position = {}{};\n", transform, "position")),
+            "vec4" => shader.push_str(&format!("    gl_Position = {};\n", transform)),
             _ => shader.push_str("    gl_Position = vec4(0.0, 0.0, 0.0, 1.0);\n"),
-        }
-
-        if attributes.outputs.contains_key("v_position") {
-            shader.push_str("    v_position = vec3(view * model * position);\n");
         }
 
         shader.push_str("}\n");
@@ -70,96 +78,63 @@ impl ShaderGenerator {
     pub fn generate_fragment_shader(
         attributes: &AttributeLayouts,
         uniforms: &HashMap<String, UniformValueWrapper>,
+        light_data: &Vec<(String, String, String)>,
     ) -> String {
         let mut shader = String::from("#version 330 core\n");
 
-        let mut has_texture = false;
-        let mut has_color = false;
-        let mut has_light = false;
-        let mut has_view_pos = false;
-        let mut has_specular = false;
-
-        // Входящие данные из вершинного шейдера
         for (name, attr_type) in &attributes.outputs {
             shader.push_str(&format!("in {} {};\n", attr_type, name));
         }
 
-        // Юниформы
-        for (name, uniform_type) in uniforms {
-            match (name.as_str(), uniform_type) {
-                ("color", UniformValueWrapper::Vec3(_)) => {
-                    has_color = true;
-                    shader.push_str("uniform vec3 color;\n");
-                }
-                ("u_light", UniformValueWrapper::Vec3(_)) => {
-                    has_light = true;
-                    shader.push_str("uniform vec3 u_light;\n");
-                }
-                ("u_light_color", UniformValueWrapper::Vec3(_)) => {
-                    shader.push_str("uniform vec3 u_light_color;\n");
-                }
-                ("u_view_pos", UniformValueWrapper::Vec3(_)) => {
-                    has_view_pos = true;
-                    shader.push_str("uniform vec3 u_view_pos;\n");
-                }
-                ("specular_strength", UniformValueWrapper::Float(_)) => {
-                    has_specular = true;
-                    shader.push_str("uniform float specular_strength;\n");
-                }
-                ("shininess", UniformValueWrapper::Float(_)) => {
-                    has_specular = true;
-                    shader.push_str("uniform float shininess;\n");
-                }
-                _ => {}
+        for (name, uniform) in uniforms {
+            match uniform {
+                UniformValueWrapper::Float(_) => shader.push_str(&format!("uniform float {};\n", name)),
+                UniformValueWrapper::Vec3(_) => shader.push_str(&format!("uniform vec3 {};\n", name)),
+                UniformValueWrapper::Mat4(_) => shader.push_str(&format!("uniform mat4 {};\n", name))
             }
         }
 
         shader.push_str("out vec4 out_color;\n");
         shader.push_str("void main() {\n");
 
-        if has_light
-            && attributes.outputs.contains_key("v_normal")
-            && attributes.outputs.contains_key("v_position")
-        {
-            shader.push_str("    vec3 norm = normalize(v_normal);\n");
-            shader.push_str("    vec3 light_dir = normalize(u_light - v_position);\n");
+        let has_light_pos = uniforms.keys().any(|name| name.contains("u_light"));
+        let has_light_color = uniforms.keys().any(|name| name.contains("u_light_color"));
+        let has_specular_strength = uniforms.keys().any(|name| name.contains("specular_strength"));
+        let has_shininess = uniforms.keys().any(|name| name.contains("shininess"));
+        let has_view_pos = uniforms.keys().any(|name| name.contains("u_view_pos"));
+        let has_color = uniforms.keys().any(|name| name.as_str() == "color");
 
-            // ambient
-            shader.push_str("    vec3 ambient = 0.1 * u_light_color;\n");
+        let mut final_color = String::from("    vec3 final_color = ");
+        let mut f_color = String::new();
+        if has_view_pos && has_shininess && has_specular_strength && has_light_pos && has_light_color && has_color
+        && attributes.outputs.contains_key("v_world_normal") && attributes.outputs.contains_key("v_world_pos"){
+            shader.push_str("   vec3 N = normalize(v_world_normal);\n");
+            shader.push_str("   vec3 V = normalize(u_view_pos - v_world_pos);\n");
+            shader.push_str("   float rim_factor = 1.0 - max(dot(N,V), 0.0);\n");
 
-            // diffuse
-            shader.push_str("    float diff = max(dot(norm, light_dir), 0.0);\n");
-            shader.push_str("    vec3 diffuse = diff * u_light_color;\n");
-
-            // specular
-            if has_view_pos && has_specular {
-                shader.push_str("    vec3 view_dir = normalize(u_view_pos - v_position);\n");
-                shader.push_str("    vec3 halfway_dir = normalize(light_dir + view_dir);\n");
-                shader.push_str(
-                    "    float spec = pow(max(dot(norm, halfway_dir), 0.0), shininess);\n",
-                );
-                shader.push_str("    vec3 specular = specular_strength * spec * u_light_color;\n");
-            } else {
-                shader.push_str("    vec3 specular = vec3(0.0);\n");
+            for (i,( name, pos, color)) in light_data.iter().enumerate() {
+                shader.push_str(&format!("  vec3 L_{name} = normalize({pos} - v_world_pos);\n"));
+                shader.push_str(&format!("  vec3 H_{name} = normalize(L_{name} + V);\n"));
+                shader.push_str(&format!("  vec3 ambient_{name} = 0.05 * color + 0.05 * {color};\n"));
+                shader.push_str(&format!("  float diff_{name} = max(dot(N, L_{name}), 0.0);\n"));
+                shader.push_str(&format!("  vec3 diffuse_{name} = diff_{name} * {color};\n"));
+                shader.push_str(&format!("  float spec_{name} = pow(max(dot(N, H_{name}), 0.0), shininess);\n"));
+                shader.push_str(&format!("  vec3 specular_{name} = specular_strength * spec_{name} * {color};\n"));
+                shader.push_str(&format!("  vec3 rim_{name} = 0.2 * pow(rim_factor, 2.0) * {color};\n"));
+                f_color += &format!("(ambient_{name} + diffuse_{name} + specular_{name} + rim_{name})");
+                if light_data.len()-1 != i {
+                    f_color += "+"
+                }
             }
-
-            // базовый цвет
-            if has_texture && attributes.outputs.contains_key("v_uv") {
-                shader.push_str("    vec3 base_color = texture(tex, v_uv).rgb;\n");
-            } else if has_color {
-                shader.push_str("    vec3 base_color = color;\n");
-            } else {
-                shader.push_str("    vec3 base_color = vec3(1.0);\n");
-            }
-
-            // результат
-            shader.push_str("    vec3 lighting = (ambient + diffuse + specular) * base_color;\n");
-            shader.push_str("    out_color = vec4(lighting, 1.0);\n");
-        } else if has_color {
-            shader.push_str("    out_color = vec4(color, 1.0);\n");
-        } else {
-            shader.push_str("    out_color = vec4(1.0);\n");
         }
+        if !f_color.is_empty() {
+            final_color += &format!("({f_color}) * color")
+        } else {
+            final_color += "color";
+        }
+        shader.push_str(&format!("{final_color};\n"));
+        shader.push_str("   final_color = pow(final_color, vec3(1.0 / 2.2));\n");
+        shader.push_str("   out_color = vec4(final_color, 1.0);\n");
 
         shader.push_str("}\n");
         shader

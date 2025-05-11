@@ -3,83 +3,6 @@ use "utils/projectionMatrix";
 
 export class Cube {
     init(camera, light) {
-        let vertexShader = "
-            #version 330 core
-
-            in vec4 position;
-            in vec3 normal;
-
-            uniform mat4 model;
-            uniform mat4 view;
-            uniform mat4 projection;
-
-            out vec3 v_world_pos;
-            out vec3 v_world_normal;
-
-            void main() {
-
-                vec4 world_pos = model * position;
-                v_world_pos = world_pos.xyz;
-                v_world_normal = mat3(transpose(inverse(model))) * normal;
-
-                gl_Position = projection * view * world_pos;
-            }
-        ";
-
-        let fragmentShader = "
-            #version 330 core
-
-            in vec3 v_world_pos;
-            in vec3 v_world_normal;
-
-            uniform vec3 u_light_1;
-            uniform vec3 u_light_2;
-
-            uniform vec3 u_view_pos;
-
-            uniform vec3 u_light_color_1;
-            uniform vec3 u_light_color_2;
-
-            uniform vec3 color;
-            uniform float specular_strength;
-            uniform float shininess;
-
-            out vec4 out_color;
-
-            void main() {
-
-                vec3 N = normalize(v_world_normal);
-                vec3 L1 = normalize(u_light_1 - v_world_pos);
-                vec3 L2 = normalize(u_light_2 - v_world_pos);
-                vec3 V = normalize(u_view_pos - v_world_pos);
-                vec3 H1 = normalize(L1 + V);
-                vec3 H2 = normalize(L2 + V);
-
-
-                vec3 ambient1 = 0.05 * color + 0.05 * u_light_color_1;
-                float diff1 = max(dot(N, L1), 0.0);
-                vec3 diffuse1 = diff1 * u_light_color_1;
-                float spec1 = pow(max(dot(N, H1), 0.0), shininess);
-                vec3 specular1 = specular_strength * spec1 * u_light_color_1;
-                vec3 ambient2 = 0.05 * color + 0.05 * u_light_color_2;
-                float diff2 = max(dot(N, L2), 0.0);
-                vec3 diffuse2 = diff2 * u_light_color_2;
-                float spec2 = pow(max(dot(N, H2), 0.0), shininess);
-                vec3 specular2 = specular_strength * spec2 * u_light_color_2;
-                float rim_factor = 1.0 - max(dot(N, V), 0.0);
-                vec3 rim1 = 0.2 * pow(rim_factor, 2.0) * u_light_color_1;
-                vec3 rim2 = 0.2 * pow(rim_factor, 2.0) * u_light_color_2;
-
-                vec3 final_color = (ambient1 + diffuse1 + specular1 + rim1) + (ambient2 + diffuse2 + specular2 + rim2) * color;
-
-
-                final_color = pow(final_color, vec3(1.0 / 2.2));
-
-                out_color = vec4(final_color, 1.0);
-            }
-
-        ";
-
         let dimensions = getWindowDimensions();
         let projectionM = projectionMatrix(dimensions.width, dimensions.height);
 
@@ -89,8 +12,6 @@ export class Cube {
         self.position = [0,0,0];
 
         self.pipeline = {
-            vertex: vertexShader,
-            fragment: fragmentShader,
             attributes: {
                 in: {
                     position: "vec4",
@@ -103,15 +24,25 @@ export class Cube {
                     v_world_normal: "vec3"
                 }
             },
+            lights: {
+                1: {
+                    position: self.light_1,
+                    color: [1,1,1]
+                },
+                2: {
+                    position: self.light_2,
+                    color: [0.5,0.4,1]
+                },
+                3: {
+                    position: [-3,1,1],
+                    color: [1,0.4,0.2]
+                }
+            },
             uniform: {
                     model: { type: "mat4", value: self._makeModel(0) },
                     view: { type: "mat4", value: camera.getViewMatrix() },
                     projection: { type: "mat4", value: projectionM },
                     color: { type: "vec3", value: [1, 1, 1] },
-                    u_light_1: { type: "vec3", value: self.light_1 },
-                    u_light_2: { type: "vec3", value: self.light_2 },
-                    u_light_color_1: { type: "vec3", value: [1, 0, 0] },
-                    u_light_color_2: { type: "vec3", value: [0, 1, 0] },
                     u_view_pos: { type: "vec3", value: camera.position },
                     specular_strength: { type: "float", value: 0.5 },
                     shininess: { type: "float", value: 32.0 }
@@ -177,8 +108,6 @@ export class Cube {
             [self.position[0], self.position[1], self.position[2], 1]
         ];
 
-
-
         return model;
     }
 
@@ -190,11 +119,12 @@ export class Cube {
         self.pipeline.uniform.projection.value = projectionMatrix(dimensions.width, dimensions.height);
         self.pipeline.uniform.u_view_pos.value = self.camera.position;
 
-        self.pipeline.uniform.u_light_1.value = self.light_1;
-        self.pipeline.uniform.u_light_2.value = self.light_2;
+        //self.pipeline.uniform.u_light_1.value = self.light_1;
+        //self.pipeline.uniform.u_light_2.value = self.light_2;
     }
 
     translate(coord) {
         self.position = coord;
+        self.pipeline.uniform.model.value = self._makeModel(0);
     }
 }
