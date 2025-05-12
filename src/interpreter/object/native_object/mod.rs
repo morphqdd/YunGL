@@ -1,5 +1,6 @@
 use crate::utils::next_id;
 use downcast_rs::{Downcast, impl_downcast};
+use image::DynamicImage;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::time::Instant;
@@ -29,6 +30,18 @@ impl NativeObject {
 impl Native for Instant {
     fn clone_box(&self) -> Box<dyn Native> {
         Box::new(*self)
+    }
+}
+
+impl Native for Vec<u8> {
+    fn clone_box(&self) -> Box<dyn Native> {
+        Box::new(self.clone())
+    }
+}
+
+impl Native for DynamicImage {
+    fn clone_box(&self) -> Box<dyn Native> {
+        Box::new(self.clone())
     }
 }
 

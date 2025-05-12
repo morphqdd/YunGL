@@ -1,4 +1,4 @@
-use "utils/math";
+use "math";
 
 export fun viewMatrix(eye, center, up) {
     let f = normalize(subtract(center, eye));

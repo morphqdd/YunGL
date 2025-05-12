@@ -54,7 +54,7 @@ impl RenderStatement {
                 ShaderGenerator::generate_fragment_shader(
                     &pipeline_data.attributes,
                     &uniform_values,
-                    &Vec::new()
+                    &Vec::new(),
                 )
             },
             vertex_buffer: create_vertex_buffer(

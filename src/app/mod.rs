@@ -14,17 +14,20 @@ use crate::interpreter::render_statement::vertex::create_vertex_buffer;
 use crate::rc;
 use glium::glutin::surface::WindowSurface;
 use glium::index::{NoIndices, PrimitiveType};
+use glium::texture::RawImage2d;
 use glium::uniforms::DynamicUniforms;
 use glium::winit::application::ApplicationHandler;
 use glium::winit::event::KeyEvent;
 use glium::winit::event::{ElementState, StartCause, WindowEvent};
 use glium::winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use glium::winit::window::{Window, WindowId};
-use glium::{Depth, DepthTest, Display, DrawParameters, Program, Surface};
+use glium::{Depth, DepthTest, Display, DrawParameters, Program, Surface, Texture2d};
+use image::{DynamicImage, GenericImageView};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use notify_debouncer_mini::{DebounceEventResult, DebouncedEvent, Debouncer, new_debouncer};
 use rayon::iter::ParallelIterator;
 use rayon::prelude::IntoParallelRefIterator;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut, Index};
 use std::path::{Path, PathBuf};
@@ -57,6 +60,7 @@ pub struct App {
     vec_vertex_data: Arc<RwLock<Vec<(Vec<f32>, Vec<String>)>>>,
     vec_attrs: Arc<RwLock<Vec<Object>>>,
     vec_attrs_data: Arc<RwLock<Vec<AttributeLayouts>>>,
+    tex_buffer: Arc<RwLock<Vec<(DynamicImage, &'static Texture2d)>>>,
 }
 
 impl App {
@@ -100,6 +104,7 @@ impl App {
             vec_vertex_data: rc!(RwLock::new(Vec::<(Vec<f32>, Vec<String>)>::new())),
             vec_attrs: rc!(RwLock::new(Vec::new())),
             vec_attrs_data: rc!(RwLock::new(Vec::<AttributeLayouts>::new())),
+            tex_buffer: Arc::new(Default::default()),
         }
     }
 }
@@ -316,7 +321,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
 
                     let lights = match pipeline.get_field(ObjString(LIGHTS.into())) {
                         Some(Dictionary(lights)) => lights,
-                        _ => rc!(RwLock::new(HashMap::new()))
+                        _ => rc!(RwLock::new(HashMap::new())),
                     };
 
                     let mut light_data = Vec::new();
@@ -326,25 +331,40 @@ impl ApplicationHandler<InterpreterEvent> for App {
                             Dictionary(l) => l.clone(),
                             _ => panic!("Expected light options"),
                         };
-                        let List(list) = opt.read().unwrap().get("position").clone().unwrap().clone() else { panic!("Expected list of positions"); };
-                        let mut pos = [0f32;3];
+                        let List(list) =
+                            opt.read().unwrap().get("position").clone().unwrap().clone()
+                        else {
+                            panic!("Expected list of positions");
+                        };
+                        let mut pos = [0f32; 3];
                         for (i, num) in list.read().unwrap().iter().enumerate() {
-                            let Number(num) = *num else { panic!("Expected number"); };
+                            let Number(num) = *num else {
+                                panic!("Expected number");
+                            };
                             pos[i] = num as f32;
                         }
                         let position = UniformValueWrapper::Vec3(pos);
                         uniforms.insert(format!("u_light_{}", name), position);
 
-                        let List(list) = opt.read().unwrap().get("color").clone().unwrap().clone() else { panic!("Expected list of positions"); };
-                        let mut color = [0f32;3];
+                        let List(list) = opt.read().unwrap().get("color").clone().unwrap().clone()
+                        else {
+                            panic!("Expected list of positions");
+                        };
+                        let mut color = [0f32; 3];
                         for (i, num) in list.read().unwrap().iter().enumerate() {
-                            let Number(num) = *num else { panic!("Expected number"); };
+                            let Number(num) = *num else {
+                                panic!("Expected number");
+                            };
                             color[i] = num as f32;
                         }
                         let color = UniformValueWrapper::Vec3(color);
                         uniforms.insert(format!("u_light_color_{}", name), color);
 
-                        light_data.push((name.clone(), format!("u_light_{}", name), format!("u_light_color_{}", name)));
+                        light_data.push((
+                            name.clone(),
+                            format!("u_light_{}", name),
+                            format!("u_light_color_{}", name),
+                        ));
                     }
 
                     let primitive = match pipeline.get_field(ObjString(PRIMITIVE.into())) {
@@ -374,15 +394,20 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         vertex_shader: if let Some(vertex_shader) = vertex_shader {
                             vertex_shader
                         } else {
-                            let vert = ShaderGenerator::generate_vertex_shader(&attrs_layout, &uniforms);
-                            //println!("Generated vertex shader: {}", vert);
+                            let vert =
+                                ShaderGenerator::generate_vertex_shader(&attrs_layout, &uniforms);
+                            println!("Generated vertex shader: {}", vert);
                             vert
                         },
                         fragment_shader: if let Some(fragment_shader) = fragment_shader {
                             fragment_shader
                         } else {
-                            let frag = ShaderGenerator::generate_fragment_shader(&attrs_layout, &uniforms, &light_data);
-                            //println!("Generated fragment shader: {}", frag);
+                            let frag = ShaderGenerator::generate_fragment_shader(
+                                &attrs_layout,
+                                &uniforms,
+                                &light_data,
+                            );
+                            println!("Generated fragment shader: {}", frag);
                             frag
                         },
                         buffer_data: BuffersData { data, layout },
@@ -436,18 +461,47 @@ impl ApplicationHandler<InterpreterEvent> for App {
             WindowEvent::RedrawRequested => {
                 let mut target = self.display.draw();
                 target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
+                let mut tex_ref_buffer = vec![];
                 for render_statement in &self.render_statement {
                     let mut uniforms = DynamicUniforms::new();
-
                     for (key, uniform) in &render_statement.uniforms {
-                        uniforms.add(
-                            &key,
-                            match uniform {
-                                UniformValueWrapper::Float(num) => num,
-                                UniformValueWrapper::Vec3(vec) => vec,
-                                UniformValueWrapper::Mat4(mat) => mat,
-                            },
-                        )
+                        match uniform {
+                            UniformValueWrapper::Float(num) => uniforms.add(&key, num),
+                            UniformValueWrapper::Vec3(vec) => uniforms.add(&key, vec),
+                            UniformValueWrapper::Mat4(mat) => uniforms.add(&key, mat),
+                            UniformValueWrapper::Sampler2D(img) => {
+                                if let Some((i, (_, _))) = self
+                                    .tex_buffer
+                                    .read()
+                                    .unwrap()
+                                    .iter()
+                                    .enumerate()
+                                    .find(|(i, (image_, tex))| *image_ == *img)
+                                {
+                                    tex_ref_buffer.push((key.clone(), i))
+                                } else {
+                                    let image = img.to_rgb8();
+                                    let dimensions = image.dimensions();
+                                    let tex = Texture2d::new(
+                                        self.display.as_ref(),
+                                        RawImage2d::from_raw_rgb(image.into_raw(), dimensions),
+                                    )
+                                    .unwrap();
+                                    self.tex_buffer
+                                        .write()
+                                        .unwrap()
+                                        .push((img.clone(), Box::leak(Box::new(tex))));
+                                    tex_ref_buffer.push((
+                                        key.clone(),
+                                        self.tex_buffer.read().unwrap().len() - 1,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+
+                    for (key, tex) in tex_ref_buffer.iter() {
+                        uniforms.add(&key, self.tex_buffer.read().unwrap().get(*tex).unwrap().1);
                     }
 
                     if self.program.is_none() {

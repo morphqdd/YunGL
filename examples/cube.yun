@@ -15,13 +15,15 @@ export class Cube {
             attributes: {
                 in: {
                     position: "vec4",
-                    normal: "vec3"
+                    normal: "vec3",
+                    tex_coords: "vec2"
                 },
                 out: {
                     v_normal: "vec3",
                     v_position: "vec3",
                     v_world_pos: "vec3",
-                    v_world_normal: "vec3"
+                    v_world_normal: "vec3",
+                    v_tex_coords: "vec2"
                 }
             },
             lights: {
@@ -45,58 +47,58 @@ export class Cube {
                     color: { type: "vec3", value: [1, 1, 1] },
                     u_view_pos: { type: "vec3", value: camera.position },
                     specular_strength: { type: "float", value: 0.5 },
-                    shininess: { type: "float", value: 32.0 }
+                    shininess: { type: "float", value: 32.0 },
+                    texture: { type: "sampler2D", value: image("C:/Users/xzer4/Downloads/11faf87175a8d660a871b25ded1566dc.jpg") }
                 },
             primitive: "triangles"
         };
 
         self.vertices = {
-                    data: [
-                        { x:-0.5, y:-0.5, z: 0.5, nx: 0, ny: 0, nz: 1 },
-                        { x: 0.5, y:-0.5, z: 0.5, nx: 0, ny: 0, nz: 1 },
-                        { x: 0.5, y: 0.5, z: 0.5, nx: 0, ny: 0, nz: 1 },
-                        { x:-0.5, y:-0.5, z: 0.5, nx: 0, ny: 0, nz: 1 },
-                        { x: 0.5, y: 0.5, z: 0.5, nx: 0, ny: 0, nz: 1 },
-                        { x:-0.5, y: 0.5, z: 0.5, nx: 0, ny: 0, nz: 1 },
+            data: [
+                { x:-0.5, y:-0.5, z: 0.5, nx: 0, ny: 0, nz: 1, u: 0, v: 0 },
+                { x: 0.5, y:-0.5, z: 0.5, nx: 0, ny: 0, nz: 1, u: 1, v: 0 },
+                { x: 0.5, y: 0.5, z: 0.5, nx: 0, ny: 0, nz: 1, u: 1, v: 1 },
+                { x:-0.5, y:-0.5, z: 0.5, nx: 0, ny: 0, nz: 1, u: 0, v: 0 },
+                { x: 0.5, y: 0.5, z: 0.5, nx: 0, ny: 0, nz: 1, u: 1, v: 1 },
+                { x:-0.5, y: 0.5, z: 0.5, nx: 0, ny: 0, nz: 1, u: 0, v: 1 },
 
-                        { x: 0.5, y:-0.5, z:-0.5, nx: 0, ny: 0, nz:-1 },
-                        { x:-0.5, y:-0.5, z:-0.5, nx: 0, ny: 0, nz:-1 },
-                        { x:-0.5, y: 0.5, z:-0.5, nx: 0, ny: 0, nz:-1 },
-                        { x: 0.5, y:-0.5, z:-0.5, nx: 0, ny: 0, nz:-1 },
-                        { x:-0.5, y: 0.5, z:-0.5, nx: 0, ny: 0, nz:-1 },
-                        { x: 0.5, y: 0.5, z:-0.5, nx: 0, ny: 0, nz:-1 },
+                { x: 0.5, y:-0.5, z:-0.5, nx: 0, ny: 0, nz:-1, u: 0, v: 0 },
+                { x:-0.5, y:-0.5, z:-0.5, nx: 0, ny: 0, nz:-1, u: 1, v: 0 },
+                { x:-0.5, y: 0.5, z:-0.5, nx: 0, ny: 0, nz:-1, u: 1, v: 1 },
+                { x: 0.5, y:-0.5, z:-0.5, nx: 0, ny: 0, nz:-1, u: 0, v: 0 },
+                { x:-0.5, y: 0.5, z:-0.5, nx: 0, ny: 0, nz:-1, u: 1, v: 1 },
+                { x: 0.5, y: 0.5, z:-0.5, nx: 0, ny: 0, nz:-1, u: 0, v: 1 },
 
-                        { x: 0.5, y:-0.5, z: 0.5, nx: 1, ny: 0, nz: 0 },
-                        { x: 0.5, y:-0.5, z:-0.5, nx: 1, ny: 0, nz: 0 },
-                        { x: 0.5, y: 0.5, z:-0.5, nx: 1, ny: 0, nz: 0 },
-                        { x: 0.5, y:-0.5, z: 0.5, nx: 1, ny: 0, nz: 0 },
-                        { x: 0.5, y: 0.5, z:-0.5, nx: 1, ny: 0, nz: 0 },
-                        { x: 0.5, y: 0.5, z: 0.5, nx: 1, ny: 0, nz: 0 },
+                { x: 0.5, y:-0.5, z: 0.5, nx: 1, ny: 0, nz: 0, u: 0, v: 0 },
+                { x: 0.5, y:-0.5, z:-0.5, nx: 1, ny: 0, nz: 0, u: 1, v: 0 },
+                { x: 0.5, y: 0.5, z:-0.5, nx: 1, ny: 0, nz: 0, u: 1, v: 1 },
+                { x: 0.5, y:-0.5, z: 0.5, nx: 1, ny: 0, nz: 0, u: 0, v: 0 },
+                { x: 0.5, y: 0.5, z:-0.5, nx: 1, ny: 0, nz: 0, u: 1, v: 1 },
+                { x: 0.5, y: 0.5, z: 0.5, nx: 1, ny: 0, nz: 0, u: 0, v: 1 },
 
-                        { x:-0.5, y:-0.5, z:-0.5, nx:-1, ny: 0, nz: 0 },
-                        { x:-0.5, y:-0.5, z: 0.5, nx:-1, ny: 0, nz: 0 },
-                        { x:-0.5, y: 0.5, z: 0.5, nx:-1, ny: 0, nz: 0 },
-                        { x:-0.5, y:-0.5, z:-0.5, nx:-1, ny: 0, nz: 0 },
-                        { x:-0.5, y: 0.5, z: 0.5, nx:-1, ny: 0, nz: 0 },
-                        { x:-0.5, y: 0.5, z:-0.5, nx:-1, ny: 0, nz: 0 },
+                { x:-0.5, y:-0.5, z:-0.5, nx:-1, ny: 0, nz: 0, u: 0, v: 0 },
+                { x:-0.5, y:-0.5, z: 0.5, nx:-1, ny: 0, nz: 0, u: 1, v: 0 },
+                { x:-0.5, y: 0.5, z: 0.5, nx:-1, ny: 0, nz: 0, u: 1, v: 1 },
+                { x:-0.5, y:-0.5, z:-0.5, nx:-1, ny: 0, nz: 0, u: 0, v: 0 },
+                { x:-0.5, y: 0.5, z: 0.5, nx:-1, ny: 0, nz: 0, u: 1, v: 1 },
+                { x:-0.5, y: 0.5, z:-0.5, nx:-1, ny: 0, nz: 0, u: 0, v: 1 },
 
-                        { x:-0.5, y: 0.5, z: 0.5, nx: 0, ny: 1, nz: 0 },
-                        { x: 0.5, y: 0.5, z: 0.5, nx: 0, ny: 1, nz: 0 },
-                        { x: 0.5, y: 0.5, z:-0.5, nx: 0, ny: 1, nz: 0 },
-                        { x:-0.5, y: 0.5, z: 0.5, nx: 0, ny: 1, nz: 0 },
-                        { x: 0.5, y: 0.5, z:-0.5, nx: 0, ny: 1, nz: 0 },
-                        { x:-0.5, y: 0.5, z:-0.5, nx: 0, ny: 1, nz: 0 },
+                { x:-0.5, y: 0.5, z: 0.5, nx: 0, ny: 1, nz: 0, u: 0, v: 0 },
+                { x: 0.5, y: 0.5, z: 0.5, nx: 0, ny: 1, nz: 0, u: 1, v: 0 },
+                { x: 0.5, y: 0.5, z:-0.5, nx: 0, ny: 1, nz: 0, u: 1, v: 1 },
+                { x:-0.5, y: 0.5, z: 0.5, nx: 0, ny: 1, nz: 0, u: 0, v: 0 },
+                { x: 0.5, y: 0.5, z:-0.5, nx: 0, ny: 1, nz: 0, u: 1, v: 1 },
+                { x:-0.5, y: 0.5, z:-0.5, nx: 0, ny: 1, nz: 0, u: 0, v: 1 },
 
-                        { x:-0.5, y:-0.5, z:-0.5, nx: 0, ny:-1, nz: 0 },
-                        { x: 0.5, y:-0.5, z:-0.5, nx: 0, ny:-1, nz: 0 },
-                        { x: 0.5, y:-0.5, z: 0.5, nx: 0, ny:-1, nz: 0 },
-                        { x:-0.5, y:-0.5, z:-0.5, nx: 0, ny:-1, nz: 0 },
-                        { x: 0.5, y:-0.5, z: 0.5, nx: 0, ny:-1, nz: 0 },
-                        { x:-0.5, y:-0.5, z: 0.5, nx: 0, ny:-1, nz: 0 }
-                    ],
-                    layout: ["vec3", "normal"]
-                };
-
+                { x:-0.5, y:-0.5, z:-0.5, nx: 0, ny:-1, nz: 0, u: 0, v: 0 },
+                { x: 0.5, y:-0.5, z:-0.5, nx: 0, ny:-1, nz: 0, u: 1, v: 0 },
+                { x: 0.5, y:-0.5, z: 0.5, nx: 0, ny:-1, nz: 0, u: 1, v: 1 },
+                { x:-0.5, y:-0.5, z:-0.5, nx: 0, ny:-1, nz: 0, u: 0, v: 0 },
+                { x: 0.5, y:-0.5, z: 0.5, nx: 0, ny:-1, nz: 0, u: 1, v: 1 },
+                { x:-0.5, y:-0.5, z: 0.5, nx: 0, ny:-1, nz: 0, u: 0, v: 1 }
+            ],
+            layout: ["vec3", "normal", "uv"]
+        };
     }
 
     _makeModel(t) {

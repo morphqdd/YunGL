@@ -4,7 +4,7 @@ use crate::rc;
 use glium::glutin::surface::WindowSurface;
 use glium::texture::RawImage2d;
 use glium::{Display, Texture2d};
-use image::RgbaImage;
+use image::{DynamicImage, RgbaImage};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -13,6 +13,7 @@ pub enum UniformValueWrapper {
     Float(f32),
     Vec3([f32; 3]),
     Mat4([[f32; 4]; 4]),
+    Sampler2D(DynamicImage),
 }
 
 pub struct UniformGenerator {
@@ -144,6 +145,7 @@ impl UniformGenerator {
                     ));
                 }
             };
+
             let value = match uniform_dict.get("value") {
                 Some(v) => v,
                 _ => return Err(InterpreterError::Custom("Uniform value required".into())),
@@ -223,6 +225,14 @@ impl UniformGenerator {
                     //println!("mat4: {:?}", mat4_value);
 
                     uniform_values.insert(name.clone(), UniformValueWrapper::Mat4(mat4_value));
+                }
+                "sampler2D" => {
+                    let Object::NativeObject(native) = value.clone() else {
+                        panic!("Expected Native object")
+                    };
+                    if let Ok(image) = native.extract().downcast::<DynamicImage>() {
+                        uniform_values.insert(name.clone(), UniformValueWrapper::Sampler2D(*image));
+                    }
                 }
                 _ => {
                     return Err(InterpreterError::Custom(format!(

@@ -2,4 +2,4 @@ let func = fun (msg) {
     print msg;
 };
 
-func("Hello, world!");
+func(1);

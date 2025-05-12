@@ -50,11 +50,14 @@ use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::utils::next_id;
 use crate::{b, rc};
 use glium::winit::event_loop::EventLoopProxy;
+use image::{ImageFormat, ImageReader};
 use object::Object;
 use object::callable::Callable;
 use object::native_object::NativeObject;
 use std::collections::HashMap;
 use std::fs;
+use std::fs::{File, read_to_string};
+use std::io::{Cursor, Read};
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::process::exit;
@@ -77,6 +80,34 @@ pub struct Interpreter {
 impl Interpreter {
     pub fn new(proxy: EventLoopProxy<InterpreterEvent>, path: PathBuf) -> Self {
         let mut globals = Environment::default();
+
+        globals.define(
+            "image",
+            Some(Object::Callable(Callable::build(
+                next_id(),
+                None,
+                None,
+                rc!(|_, args| {
+                    if let Object::String(path) = args[0].clone() {
+                        let path = PathBuf::from(path);
+
+                        let content = fs::read(path).unwrap();
+
+                        let image = ImageReader::new(Cursor::new(&content))
+                            .with_guessed_format()
+                            .unwrap()
+                            .decode()
+                            .unwrap();
+
+                        return Ok(Object::NativeObject(NativeObject::new(b!(image))));
+                    }
+                    Ok(Object::Nil)
+                }),
+                rc!(|| 1),
+                rc!(|| "image".into()),
+                false,
+            ))),
+        );
 
         globals.define(
             "regKeyEvent",

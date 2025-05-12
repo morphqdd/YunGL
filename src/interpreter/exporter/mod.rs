@@ -31,10 +31,10 @@ impl<T: 'static + Clone> Exporter<T> {
                 if let Some(expr) = expr.downcast_ref::<Literal>() {
                     if let Some(Object::String(path)) = expr.get_value() {
                         let path = self.path.parent().unwrap().join(path.to_owned() + ".yun");
-                        let code = read_to_string(path).unwrap();
+                        let code = read_to_string(path.clone()).unwrap();
                         let tokens = Scanner::new(&code).scan_tokens()?;
                         let _ast = Parser::new(tokens).parse()?;
-                        let _ast = Exporter::new(self.path.clone(), _ast).resolve()?;
+                        let _ast = Exporter::new(path.clone(), _ast).resolve()?;
                         let exported_ast = self.sift(_ast)?;
                         for stmt in exported_ast {
                             ast.push(stmt);
