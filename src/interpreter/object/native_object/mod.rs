@@ -3,6 +3,7 @@ use downcast_rs::{Downcast, impl_downcast};
 use image::DynamicImage;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 use std::time::Instant;
 
 #[derive(Debug, Clone)]
@@ -40,6 +41,12 @@ impl Native for Vec<u8> {
 }
 
 impl Native for DynamicImage {
+    fn clone_box(&self) -> Box<dyn Native> {
+        Box::new(self.clone())
+    }
+}
+
+impl Native for Arc<DynamicImage> {
     fn clone_box(&self) -> Box<dyn Native> {
         Box::new(self.clone())
     }

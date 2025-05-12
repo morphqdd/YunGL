@@ -5,7 +5,7 @@ use crate::interpreter::object::Object;
 use crate::interpreter::object::callable::Callable;
 use crate::interpreter::render_statement::RenderStatement;
 use crate::interpreter::render_statement::buffers_data::BuffersData;
-use crate::interpreter::render_statement::pipeline_data::{AttributeLayouts, PipelineData};
+use crate::interpreter::render_statement::pipeline_data::AttributeLayouts;
 use crate::interpreter::render_statement::shader_generator::ShaderGenerator;
 use crate::interpreter::render_statement::uniform_generator::{
     UniformGenerator, UniformValueWrapper,
@@ -22,15 +22,13 @@ use glium::winit::event::{ElementState, StartCause, WindowEvent};
 use glium::winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use glium::winit::window::{Window, WindowId};
 use glium::{Depth, DepthTest, Display, DrawParameters, Program, Surface, Texture2d};
-use image::{DynamicImage, GenericImageView};
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use notify_debouncer_mini::{DebounceEventResult, DebouncedEvent, Debouncer, new_debouncer};
+use image::{DynamicImage};
+use notify::{RecommendedWatcher, RecursiveMode};
+use notify_debouncer_mini::{DebounceEventResult, Debouncer, new_debouncer};
 use rayon::iter::ParallelIterator;
 use rayon::prelude::IntoParallelRefIterator;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::{Deref, DerefMut, Index};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::exit;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
@@ -45,22 +43,23 @@ pub enum AppEvent {
     ReqKeyEvent(String, Callable),
 }
 
+type ShaderKey = (Vec<(String, String)>, Vec<(String, String)>, Vec<String>);
+
 pub struct App {
     window: Arc<Window>,
     display: Arc<Display<WindowSurface>>,
     render_statement: Vec<RenderStatement>,
     interpreter: Arc<Mutex<Interpreter>>,
     uniform_generator: Arc<RwLock<UniformGenerator>>,
-    path: Arc<PathBuf>,
-    watcher: Arc<Debouncer<RecommendedWatcher>>,
     rx_restart: Arc<Mutex<Receiver<()>>>,
     event_channel: (Sender<AppEvent>, Arc<Mutex<Receiver<AppEvent>>>),
-    program: Option<Program>,
+    program_buffer: HashMap<(String, String), Program>,
     vec_vertex: Arc<RwLock<Vec<Object>>>,
     vec_vertex_data: Arc<RwLock<Vec<(Vec<f32>, Vec<String>)>>>,
     vec_attrs: Arc<RwLock<Vec<Object>>>,
     vec_attrs_data: Arc<RwLock<Vec<AttributeLayouts>>>,
-    tex_buffer: Arc<RwLock<Vec<(DynamicImage, &'static Texture2d)>>>,
+    tex_buffer: Arc<RwLock<Vec<(Arc<DynamicImage>, &'static Texture2d)>>>,
+    shader_cache: Arc<RwLock<HashMap<ShaderKey, (String, String)>>>,
 }
 
 impl App {
@@ -95,16 +94,15 @@ impl App {
             interpreter: rc!(Mutex::new(Interpreter::new(proxy.clone(), path.clone()))),
             render_statement: vec![],
             uniform_generator: rc!(RwLock::new(UniformGenerator::new())),
-            path: path_arc,
-            watcher: rc!(debouncer),
             rx_restart: rc!(Mutex::new(rx)),
-            event_channel: (tx_event, rc!((Mutex::new(rx_event)))),
-            program: None,
+            event_channel: (tx_event, rc!(Mutex::new(rx_event))),
+            program_buffer: HashMap::new(),
             vec_vertex: rc!(RwLock::new(Vec::new())),
             vec_vertex_data: rc!(RwLock::new(Vec::<(Vec<f32>, Vec<String>)>::new())),
             vec_attrs: rc!(RwLock::new(Vec::new())),
             vec_attrs_data: rc!(RwLock::new(Vec::<AttributeLayouts>::new())),
             tex_buffer: Arc::new(Default::default()),
+            shader_cache: Arc::new(Default::default()),
         }
     }
 }
@@ -186,10 +184,11 @@ impl ApplicationHandler<InterpreterEvent> for App {
             InterpreterEvent::Render(List(list)) => {
                 let packets = Arc::new(RwLock::new(Vec::new()));
                 let uniform_generator = self.uniform_generator.clone();
-                let mut vec_vertex = self.vec_vertex.clone();
-                let mut vec_vertex_data = self.vec_vertex_data.clone();
-                let mut vec_attrs = self.vec_attrs.clone();
-                let mut vec_attrs_data = self.vec_attrs_data.clone();
+                let vec_vertex = self.vec_vertex.clone();
+                let vec_vertex_data = self.vec_vertex_data.clone();
+                let vec_attrs = self.vec_attrs.clone();
+                let vec_attrs_data = self.vec_attrs_data.clone();
+                let shader_cache = self.shader_cache.clone();
                 list.read().unwrap().par_iter().for_each(|elm| {
                     let Some(pipeline) = elm.get_field(Number(0.0)) else {
                         return;
@@ -204,7 +203,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                             .unwrap()
                             .iter()
                             .enumerate()
-                            .find(|(i, x)| x == &&vertex)
+                            .find(|(_, x)| x == &&vertex)
                             .unwrap();
                         vec_vertex_data.read().unwrap().get(i).unwrap().clone()
                     } else {
@@ -275,7 +274,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                             .unwrap()
                             .iter()
                             .enumerate()
-                            .find(|(i, x)| x == &&raw_attrs_)
+                            .find(|(_, x)| x == &&raw_attrs_)
                             .unwrap();
                         vec_attrs_data.read().unwrap().get(i).unwrap().clone()
                     } else {
@@ -385,21 +384,37 @@ impl ApplicationHandler<InterpreterEvent> for App {
                             _ => None,
                         };
 
-                    // println!(
-                    //     "Vertex: {}\nFragment: {}",
-                    //     render_statement.vertex_shader, render_statement.fragment_shader
-                    // );
+                    let vec_attrs_in: Vec<(String, String)> = attrs_layout
+                        .inputs
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
 
-                    packets.write().unwrap().push(Packet {
-                        vertex_shader: if let Some(vertex_shader) = vertex_shader {
+                    let vec_attrs_out: Vec<(String, String)> = attrs_layout
+                        .outputs
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
+
+                    let mut uniform_keys = uniforms.keys().cloned().collect::<Vec<String>>();
+                    uniform_keys.sort_unstable();
+
+                    let (vert, frag) = if let Some((vert, frag)) = shader_cache
+                        .read()
+                        .unwrap()
+                        .get(&(vec_attrs_in.clone(), vec_attrs_out.clone(), uniform_keys.clone()))
+                    {
+                        (vert.clone(), frag.clone())
+                    } else {
+                        let vert = if let Some(vertex_shader) = vertex_shader {
                             vertex_shader
                         } else {
                             let vert =
                                 ShaderGenerator::generate_vertex_shader(&attrs_layout, &uniforms);
-                            println!("Generated vertex shader: {}", vert);
                             vert
-                        },
-                        fragment_shader: if let Some(fragment_shader) = fragment_shader {
+                        };
+
+                        let frag = if let Some(fragment_shader) = fragment_shader {
                             fragment_shader
                         } else {
                             let frag = ShaderGenerator::generate_fragment_shader(
@@ -407,9 +422,16 @@ impl ApplicationHandler<InterpreterEvent> for App {
                                 &uniforms,
                                 &light_data,
                             );
-                            println!("Generated fragment shader: {}", frag);
+                            //println!("Generated fragment shader: {}", frag);
                             frag
-                        },
+                        };
+                        shader_cache.write().unwrap().insert((vec_attrs_in, vec_attrs_out, uniform_keys), (vert.clone(), frag.clone()));
+                        (vert, frag)
+                    };
+
+                    packets.write().unwrap().push(Packet {
+                        vertex_shader: vert,
+                        fragment_shader: frag,
                         buffer_data: BuffersData { data, layout },
                         uniforms,
                         primitive_type: match primitive.as_str() {
@@ -476,7 +498,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                                     .unwrap()
                                     .iter()
                                     .enumerate()
-                                    .find(|(i, (image_, tex))| *image_ == *img)
+                                    .find(|(_, (image_, _))| image_.eq(img))
                                 {
                                     tex_ref_buffer.push((key.clone(), i))
                                 } else {
@@ -504,15 +526,31 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         uniforms.add(&key, self.tex_buffer.read().unwrap().get(*tex).unwrap().1);
                     }
 
-                    if self.program.is_none() {
-                        self.program = Some(render_statement.build_program(&self.display).unwrap());
-                    }
-
+                    let program = if let Some(program) = self.program_buffer.get(&(
+                        render_statement.vertex_shader.clone(),
+                        render_statement.fragment_shader.clone(),
+                    )) {
+                        program
+                    } else {
+                        let program = render_statement.build_program(&self.display).unwrap();
+                        self.program_buffer.insert(
+                            (
+                                render_statement.vertex_shader.clone(),
+                                render_statement.fragment_shader.clone(),
+                            ),
+                            program,
+                        );
+                        self.program_buffer.get(&(
+                            render_statement.vertex_shader.clone(),
+                            render_statement.fragment_shader.clone(),
+                        )).unwrap()
+                    };
+                    //println!("{}", self.program_buffer.len());
                     target
                         .draw(
                             &render_statement.vertex_buffer,
                             &NoIndices(render_statement.primitive_type),
-                            self.program.as_ref().unwrap(),
+                            program,
                             &uniforms,
                             &DrawParameters {
                                 depth: Depth {

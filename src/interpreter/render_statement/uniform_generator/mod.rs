@@ -13,17 +13,19 @@ pub enum UniformValueWrapper {
     Float(f32),
     Vec3([f32; 3]),
     Mat4([[f32; 4]; 4]),
-    Sampler2D(DynamicImage),
+    Sampler2D(Arc<DynamicImage>),
 }
 
 pub struct UniformGenerator {
     default: Object,
+    tex_buffer: Vec<Arc<DynamicImage>>,
 }
 
 impl UniformGenerator {
     pub(crate) fn new() -> Self {
         Self {
             default: Self::default_common_uniforms(),
+            tex_buffer: vec![],
         }
     }
 
@@ -230,8 +232,22 @@ impl UniformGenerator {
                     let Object::NativeObject(native) = value.clone() else {
                         panic!("Expected Native object")
                     };
-                    if let Ok(image) = native.extract().downcast::<DynamicImage>() {
-                        uniform_values.insert(name.clone(), UniformValueWrapper::Sampler2D(*image));
+                    if let Ok(image) = native.extract().downcast::<Arc<DynamicImage>>() {
+                        if let Some(image) = self
+                            .tex_buffer
+                            .iter()
+                            .find(|image_| image_.as_ref().eq(&image))
+                        {
+                            uniform_values.insert(
+                                name.clone(),
+                                UniformValueWrapper::Sampler2D(image.clone()),
+                            );
+                        } else {
+                            let image = *image;
+                            self.tex_buffer.push(image.clone());
+                            uniform_values
+                                .insert(name.clone(), UniformValueWrapper::Sampler2D(image));
+                        }
                     }
                 }
                 _ => {

@@ -2,12 +2,10 @@ use "utils/viewMatrix";
 use "utils/projectionMatrix";
 
 export class Cube {
-    init(camera, light) {
+    init(camera, light, image) {
         let dimensions = getWindowDimensions();
         let projectionM = projectionMatrix(dimensions.width, dimensions.height);
 
-        self.light_1 = light;
-        self.light_2 = [-1, 1, 1];
         self.camera = camera;
         self.position = [0,0,0];
 
@@ -27,10 +25,7 @@ export class Cube {
                 }
             },
             lights: {
-                1: {
-                    position: self.light_1,
-                    color: [1,1,1]
-                }
+                1: light
             },
             uniform: {
                     model: { type: "mat4", value: self._makeModel(0) },
@@ -40,7 +35,7 @@ export class Cube {
                     u_view_pos: { type: "vec3", value: camera.position },
                     specular_strength: { type: "float", value: 0.5 },
                     shininess: { type: "float", value: 32.0 },
-                    tex: { type: "sampler2D", value: image("C:/Users/xzer4/Downloads/11faf87175a8d660a871b25ded1566dc.jpg") }
+                    tex: { type: "sampler2D", value: image }
                 },
             primitive: "triangles"
         };
@@ -118,9 +113,6 @@ export class Cube {
         let dimensions = getWindowDimensions();
         self.pipeline.uniform.projection.value = projectionMatrix(dimensions.width, dimensions.height);
         self.pipeline.uniform.u_view_pos.value = self.camera.position;
-
-        //self.pipeline.uniform.u_light_1.value = self.light_1;
-        //self.pipeline.uniform.u_light_2.value = self.light_2;
     }
 
     translate(coord) {

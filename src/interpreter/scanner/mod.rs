@@ -193,7 +193,6 @@ impl Scanner {
 
         self.advance();
         let value = self.source[self.start + 1..self.current - 1].replace("\\n", "\n");
-        println!("{}", value);
         self.add_token(TokenType::String, Some(Object::String(value)));
         Ok(())
     }
@@ -229,7 +228,6 @@ impl Scanner {
                     .to_string()
                     .parse()
                     .map_err(|e| {
-                        println!("{:?}", self.tokens);
                         panic!("{e}");
                     })
                     .unwrap(),

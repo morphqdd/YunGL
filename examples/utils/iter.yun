@@ -1,0 +1,13 @@
+export fun map(list, func) {
+    let newList = [];
+    let i = 0;
+    while list[i] != nil {
+        newList + func(list[i]);
+        i = i + 1;
+    }
+    return newList;
+}
+
+let list = [1,2,3,4];
+let newList = map(list, fun(elm) { return elm * 2; });
+print newList;

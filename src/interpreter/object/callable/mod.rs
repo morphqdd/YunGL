@@ -1,5 +1,4 @@
 use crate::interpreter::Interpreter;
-use crate::interpreter::ast::stmt::fun_stmt::Fun;
 use crate::interpreter::environment::Environment;
 use crate::interpreter::error::{InterpreterError, Result};
 use crate::interpreter::object::Object;

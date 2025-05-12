@@ -50,14 +50,13 @@ use crate::interpreter::scanner::token::token_type::TokenType;
 use crate::utils::next_id;
 use crate::{b, rc};
 use glium::winit::event_loop::EventLoopProxy;
-use image::{ImageFormat, ImageReader};
+use image::ImageReader;
 use object::Object;
 use object::callable::Callable;
 use object::native_object::NativeObject;
 use std::collections::HashMap;
 use std::fs;
-use std::fs::{File, read_to_string};
-use std::io::{Cursor, Read};
+use std::io::{Cursor};
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::process::exit;
@@ -99,7 +98,7 @@ impl Interpreter {
                             .decode()
                             .unwrap();
 
-                        return Ok(Object::NativeObject(NativeObject::new(b!(image))));
+                        return Ok(Object::NativeObject(NativeObject::new(b!(Arc::new(image)))));
                     }
                     Ok(Object::Nil)
                 }),
@@ -213,6 +212,42 @@ impl Interpreter {
                 }),
                 rc!(|| 1),
                 rc!(|| "sin".into()),
+                false,
+            ))),
+        );
+
+        globals.define(
+            "rad",
+            Some(Object::Callable(Callable::build(
+                next_id(),
+                None,
+                None,
+                rc!(|_, args| {
+                    if let Object::Number(n) = args[0].clone() {
+                        return Ok(Object::Number(n.to_radians()));
+                    }
+                    Ok(Object::Nil)
+                }),
+                rc!(|| 1),
+                rc!(|| "rad".into()),
+                false,
+            ))),
+        );
+
+        globals.define(
+            "deg",
+            Some(Object::Callable(Callable::build(
+                next_id(),
+                None,
+                None,
+                rc!(|_, args| {
+                    if let Object::Number(n) = args[0].clone() {
+                        return Ok(Object::Number(n.to_degrees()));
+                    }
+                    Ok(Object::Nil)
+                }),
+                rc!(|| 1),
+                rc!(|| "deg".into()),
                 false,
             ))),
         );
@@ -414,7 +449,7 @@ impl Interpreter {
     }
 
     fn interpret(&mut self, statements: Vec<Box<dyn Stmt<Result<Object>>>>) -> Result<Object> {
-        let mut res = Object::Void;
+        let mut res = Object::Nil;
         for stmt in statements {
             res = self.execute(stmt.deref())?;
         }
@@ -438,7 +473,7 @@ impl Interpreter {
             }
         }
         self.env.replace(previous.unwrap());
-        Ok(Object::Void)
+        Ok(Object::Nil)
     }
 
     #[inline]
