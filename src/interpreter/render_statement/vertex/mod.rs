@@ -53,17 +53,17 @@ pub fn create_vertex_buffer(
             offset += 1;
         }
 
-        // Текстурные координаты
-        if has_uv {
-            for i in 0..2 {
-                uv[i] = chunk.get(offset).copied().unwrap_or(0.0);
-                offset += 1;
-            }
-        }
         // Нормали
         if has_normal {
             for i in 0..3 {
                 normal[i] = chunk.get(offset).copied().unwrap_or(0.0);
+                offset += 1;
+            }
+        }
+
+        if has_uv {
+            for i in 0..2 {
+                uv[i] = chunk.get(offset).copied().unwrap_or(0.0);
                 offset += 1;
             }
         }

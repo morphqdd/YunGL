@@ -46,6 +46,10 @@ impl ShaderGenerator {
             shader.push_str("   v_color = color;\n");
         }
 
+        if attributes.inputs.contains_key("uv") && attributes.outputs.contains_key("v_uv") {
+            shader.push_str("   v_uv = uv;\n");
+        }
+
         let mut transform = String::from("");
         if uniforms.contains_key("projection") {
             transform += "projection * ";
@@ -160,7 +164,11 @@ impl ShaderGenerator {
             }
         }
         if !f_color.is_empty() {
-            final_color += &format!("({f_color}) * color")
+            if attributes.outputs.contains_key("v_uv") && uniforms.contains_key("tex") {
+                final_color += &format!("({f_color}) * texture(tex, v_uv).rgb")
+            } else {
+                final_color += &format!("({f_color}) * color")
+            }
         } else {
             final_color += "color";
         }
