@@ -56,7 +56,7 @@ use object::callable::Callable;
 use object::native_object::NativeObject;
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Cursor};
+use std::io::Cursor;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::process::exit;

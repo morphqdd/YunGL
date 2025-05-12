@@ -2,14 +2,28 @@ use "utils/viewMatrix";
 use "utils/projectionMatrix";
 
 export class Cube {
-    init(camera, light, image) {
+    init(camera, light) {
         let dimensions = getWindowDimensions();
         let projectionM = projectionMatrix(dimensions.width, dimensions.height);
 
         self.camera = camera;
         self.position = [0,0,0];
 
+        let frag = "
+        #version 330 core
+        in vec3 frag_to_light_1;
+        uniform samplerCube shadow_map_1;
+        out vec4 out_color;
+
+        void main() {
+
+            float d = texture(shadow_map_1, frag_to_light_1).r;
+            out_color = vec4(vec3(d), 1.0);
+        }
+        ";
+
         self.pipeline = {
+            //fragment: frag,
             attributes: {
                 in: {
                     position: "vec4",
@@ -31,11 +45,10 @@ export class Cube {
                     model: { type: "mat4", value: self._makeModel(0) },
                     view: { type: "mat4", value: camera.getViewMatrix() },
                     projection: { type: "mat4", value: projectionM },
-                    color: { type: "vec3", value: [1, 1, 1] },
+                    color: { type: "vec3", value: [0.5, 0.4, 1] },
                     u_view_pos: { type: "vec3", value: camera.position },
                     specular_strength: { type: "float", value: 0.5 },
-                    shininess: { type: "float", value: 32.0 },
-                    tex: { type: "sampler2D", value: image }
+                    shininess: { type: "float", value: 32.0 }
                 },
             primitive: "triangles"
         };
@@ -97,9 +110,9 @@ export class Cube {
     _makeModel(t) {
 
         let model = [
-            [2 * cos(t), 0, 2*sin(t), 0],
-            [0, 2, 0, 0],
-            [-2*sin(t), 0, 2*cos(t), 0],
+            [1 * cos(t), 0, -1*sin(t), 0],
+            [0, 1, 0, 0],
+            [1*sin(t), 0, 1*cos(t), 0],
             [self.position[0], self.position[1], self.position[2], 1]
         ];
 

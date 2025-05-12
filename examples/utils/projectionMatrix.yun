@@ -1,5 +1,5 @@
 export fun projectionMatrix(width, height) {
-    let fov   = 45.0 * 3.14 / 180.0;
+    let fov   = 45 * 3.14 / 180.0;
     let aspect = width / height;
     let near   = 0.1;
     let far    = 100.0;

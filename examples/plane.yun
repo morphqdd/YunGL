@@ -11,8 +11,20 @@ export class Plane {
         self.position = [0, 0, 0];
         self.rotation = [0,0,0];
         self.scale = [1,1,1];
+        let frag = "
+        #version 330 core
+        in vec3 frag_to_light_1;
+        uniform samplerCube shadow_map_1;
+        out vec4 out_color;
 
+        void main() {
+
+            float d = texture(shadow_map_1, frag_to_light_1).r;
+            out_color = vec4(vec3(d), 1.0);
+        }
+        ";
         self.pipeline = {
+            //fragment: frag,
             attributes: {
                 in: {
                     position: "vec4",
@@ -44,13 +56,13 @@ export class Plane {
         self.vertices = {
             data: [
 
-                { x:-0.5, y:0, z:-0.5, nx:0, ny:1, nz:0 },
-                { x: 0.5, y:0, z:-0.5, nx:0, ny:1, nz:0 },
-                { x: 0.5, y:0, z: 0.5, nx:0, ny:1, nz:0 },
+                { x:-0.5, y:0, z:-0.5, nx:0, ny:-1, nz:0 },
+                { x: 0.5, y:0, z:-0.5, nx:0, ny:-1, nz:0 },
+                { x: 0.5, y:0, z: 0.5, nx:0, ny:-1, nz:0 },
 
-                { x:-0.5, y:0, z:-0.5, nx:0, ny:1, nz:0},
-                { x: 0.5, y:0, z: 0.5, nx:0, ny:1, nz:0 },
-                { x:-0.5, y:0, z: 0.5, nx:0, ny:1, nz:0 }
+                { x:-0.5, y:0, z:-0.5, nx:0, ny:-1, nz:0},
+                { x: 0.5, y:0, z: 0.5, nx:0, ny:-1, nz:0 },
+                { x:-0.5, y:0, z: 0.5, nx:0, ny:-1, nz:0 }
             ],
             layout: ["vec3", "normal"]
         };
@@ -75,12 +87,29 @@ export class Plane {
             [0, 0, 0, 1]
         ];
 
-        let rx = rotationMatrix([1, 0, 0], R[0]);
-        let ry = rotationMatrix([0, 1, 0], R[1]);
-        let rz = rotationMatrix([0, 0, 1], R[2]);
+        let rx = [
+            [1, 0, 0, 0],
+            [0, cos(R[0]), -sin(R[0]), 0],
+            [0, sin(R[0]), cos(R[0]),0],
+            [0, 0, 0, 1]
+        ];
 
-        let rotation = mulMat4(mulMat4(rz, ry), rx);
-        return mulMat4(mulMat4(translation, rotation), scale);
+        let ry = [
+            [cos(R[1]), sin(R[1]), 0, 0],
+            [0, 1, 0, 0],
+            [-sin(R[1]), 0, cos(R[0]),0],
+            [0, 0, 0, 1]
+        ];
+
+        let rz = [
+            [cos(R[0]), -sin(R[0]), 0, 0],
+            [sin(R[0]), cos(R[0]), 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ];
+
+        let rotation = mulMat4(mulMat4(rx, ry), rz);
+        return mulMat4(mulMat4(scale, rotation ), translation);
     }
 
     update(dt) {

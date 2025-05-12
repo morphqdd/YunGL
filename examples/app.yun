@@ -8,17 +8,17 @@ let t = 0;
 let camera = Camera([0, 0, 0], [0, 1, 0], [0, 0, 1], 0.3, 0.05);
 camera.regKeyMove();
 
-let light = { position: [1, 1, 1], color: [0.4,1,1]};
+let light = { position: [2, 20, 0.5], color: [1,1,1]};
 let objs = [];
 let render_ = [];
 let tex = image("C:\Users\xzer4\Downloads\photo_2025-04-14_21-00-58.jpg");
 
-let cube = Cube(camera, light, tex);
+let cube = Cube(camera, light);
 cube.translate([0, 2, 0]);
 let plane = Plane(camera, light);
-plane.setScale([4, 4, 4]);
+plane.setScale([30, 30, 30]);
 plane.rotate([90,0,0]);
-plane.translate([0,0.5,0]);
+plane.translate([0,2,-1]);
 // Main render loop
 while true {
     t = t + 0.01;

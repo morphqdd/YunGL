@@ -1,6 +1,6 @@
 use crate::interpreter::error::{InterpreterError, Result};
 use crate::interpreter::render_statement::uniform_generator::UniformValueWrapper;
-use crate::interpreter::render_statement::vertex::{Vertex};
+use crate::interpreter::render_statement::vertex::Vertex;
 use glium::glutin::surface::WindowSurface;
 use glium::index::PrimitiveType;
 use glium::{Display, Program, VertexBuffer};
@@ -18,6 +18,7 @@ pub struct RenderStatement {
     pub vertex_buffer: VertexBuffer<Vertex>,
     pub uniforms: HashMap<String, UniformValueWrapper>,
     pub primitive_type: PrimitiveType,
+    pub light_names: Vec<String>,
 }
 
 impl RenderStatement {

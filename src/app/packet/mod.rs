@@ -10,4 +10,5 @@ pub struct Packet {
     pub buffer_data: BuffersData,
     pub uniforms: HashMap<String, UniformValueWrapper>,
     pub primitive_type: PrimitiveType,
+    pub light_names: Vec<String>,
 }

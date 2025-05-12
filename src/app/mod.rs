@@ -12,21 +12,30 @@ use crate::interpreter::render_statement::uniform_generator::{
 };
 use crate::interpreter::render_statement::vertex::create_vertex_buffer;
 use crate::rc;
+use crate::utils::projection_matrix;
+use cgmath::{Deg, Matrix4, Point3, Vector3};
+use glium::framebuffer::{DepthAttachment, SimpleFrameBuffer, ToDepthAttachment};
 use glium::glutin::surface::WindowSurface;
 use glium::index::{NoIndices, PrimitiveType};
-use glium::texture::RawImage2d;
-use glium::uniforms::DynamicUniforms;
+use glium::texture::{ClientFormat, CubeLayer, DepthCubemap, DepthTexture2d, RawImage2d};
+use glium::uniforms::{
+    DynamicUniforms, MagnifySamplerFilter, MinifySamplerFilter, Sampler, SamplerWrapFunction,
+};
+use glium::vertex::MultiVerticesSource;
 use glium::winit::application::ApplicationHandler;
 use glium::winit::event::KeyEvent;
 use glium::winit::event::{ElementState, StartCause, WindowEvent};
 use glium::winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use glium::winit::window::{Window, WindowId};
-use glium::{Depth, DepthTest, Display, DrawParameters, Program, Surface, Texture2d};
-use image::{DynamicImage};
+use glium::{
+    Blend, Depth, DepthTest, Display, DrawParameters, Program, Surface, Texture2d, uniform,
+};
+use image::DynamicImage;
 use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_mini::{DebounceEventResult, Debouncer, new_debouncer};
 use rayon::iter::ParallelIterator;
 use rayon::prelude::IntoParallelRefIterator;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::exit;
@@ -43,6 +52,28 @@ pub enum AppEvent {
     ReqKeyEvent(String, Callable),
 }
 
+const SHADOW_VERTEX_SHADER: &str = r#"
+    #version 330 core
+    uniform mat4 model;
+    uniform mat4 light_matrix;
+    uniform float u_far_plane;
+    layout(location = 0) in vec4 position;
+
+    void main() {
+        vec4 world_pos = model * position;
+        vec4 ls = light_matrix * world_pos;
+        float dist = length(ls.xyz);
+        ls.z = dist;
+        ls.w = u_far_plane;
+        gl_Position = ls;
+    }
+"#;
+
+const SHADOW_FRAGMENT_SHADER: &str = r#"
+    #version 330 core
+    void main() {}
+"#;
+
 type ShaderKey = (Vec<(String, String)>, Vec<(String, String)>, Vec<String>);
 
 pub struct App {
@@ -51,6 +82,8 @@ pub struct App {
     render_statement: Vec<RenderStatement>,
     interpreter: Arc<Mutex<Interpreter>>,
     uniform_generator: Arc<RwLock<UniformGenerator>>,
+    path: Arc<PathBuf>,
+    watcher: Arc<Debouncer<RecommendedWatcher>>,
     rx_restart: Arc<Mutex<Receiver<()>>>,
     event_channel: (Sender<AppEvent>, Arc<Mutex<Receiver<AppEvent>>>),
     program_buffer: HashMap<(String, String), Program>,
@@ -60,6 +93,11 @@ pub struct App {
     vec_attrs_data: Arc<RwLock<Vec<AttributeLayouts>>>,
     tex_buffer: Arc<RwLock<Vec<(Arc<DynamicImage>, &'static Texture2d)>>>,
     shader_cache: Arc<RwLock<HashMap<ShaderKey, (String, String)>>>,
+    lights: Arc<RwLock<HashMap<String, [f32; 3]>>>, // Имя света -> позиция
+    shadow_textures_buffer: Arc<RwLock<Vec<(String, Sampler<'static, DepthCubemap>)>>>, // Список теневых карт
+    light_name_to_index: HashMap<String, usize>, // Имя света -> индекс в shadow_textures
+    shadow_program: Program,
+    shadow_size: u32,
 }
 
 impl App {
@@ -90,10 +128,19 @@ impl App {
 
         Self {
             window,
+            shadow_program: Program::from_source(
+                display.as_ref(),
+                SHADOW_VERTEX_SHADER,
+                SHADOW_FRAGMENT_SHADER,
+                None,
+            )
+            .unwrap(),
             display,
             interpreter: rc!(Mutex::new(Interpreter::new(proxy.clone(), path.clone()))),
             render_statement: vec![],
             uniform_generator: rc!(RwLock::new(UniformGenerator::new())),
+            path: path_arc,
+            watcher: rc!(debouncer),
             rx_restart: rc!(Mutex::new(rx)),
             event_channel: (tx_event, rc!(Mutex::new(rx_event))),
             program_buffer: HashMap::new(),
@@ -103,6 +150,10 @@ impl App {
             vec_attrs_data: rc!(RwLock::new(Vec::<AttributeLayouts>::new())),
             tex_buffer: Arc::new(Default::default()),
             shader_cache: Arc::new(Default::default()),
+            shadow_textures_buffer: Arc::new(Default::default()),
+            light_name_to_index: Default::default(),
+            lights: Arc::new(Default::default()),
+            shadow_size: 1024,
         }
     }
 }
@@ -189,6 +240,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                 let vec_attrs = self.vec_attrs.clone();
                 let vec_attrs_data = self.vec_attrs_data.clone();
                 let shader_cache = self.shader_cache.clone();
+                let lights_ = self.lights.clone();
                 list.read().unwrap().par_iter().for_each(|elm| {
                     let Some(pipeline) = elm.get_field(Number(0.0)) else {
                         return;
@@ -324,6 +376,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                     };
 
                     let mut light_data = Vec::new();
+                    let light_names: Vec<String> = lights.read().unwrap().keys().cloned().collect();
 
                     for (name, obj) in lights.read().unwrap().iter() {
                         let opt = match obj {
@@ -342,12 +395,19 @@ impl ApplicationHandler<InterpreterEvent> for App {
                             };
                             pos[i] = num as f32;
                         }
+
+                        let mut lights = lights_.write().unwrap();
+                        if !lights.contains_key(name) {
+                            lights.insert(name.clone(), pos);
+                        }
+
                         let position = UniformValueWrapper::Vec3(pos);
+
                         uniforms.insert(format!("u_light_{}", name), position);
 
                         let List(list) = opt.read().unwrap().get("color").clone().unwrap().clone()
                         else {
-                            panic!("Expected list of positions");
+                            panic!("Expected list of color");
                         };
                         let mut color = [0f32; 3];
                         for (i, num) in list.read().unwrap().iter().enumerate() {
@@ -399,18 +459,23 @@ impl ApplicationHandler<InterpreterEvent> for App {
                     let mut uniform_keys = uniforms.keys().cloned().collect::<Vec<String>>();
                     uniform_keys.sort_unstable();
 
-                    let (vert, frag) = if let Some((vert, frag)) = shader_cache
-                        .read()
-                        .unwrap()
-                        .get(&(vec_attrs_in.clone(), vec_attrs_out.clone(), uniform_keys.clone()))
-                    {
+                    let (vert, frag) = if let Some((vert, frag)) =
+                        shader_cache.read().unwrap().get(&(
+                            vec_attrs_in.clone(),
+                            vec_attrs_out.clone(),
+                            uniform_keys.clone(),
+                        )) {
                         (vert.clone(), frag.clone())
                     } else {
                         let vert = if let Some(vertex_shader) = vertex_shader {
                             vertex_shader
                         } else {
-                            let vert =
-                                ShaderGenerator::generate_vertex_shader(&attrs_layout, &uniforms);
+                            let vert = ShaderGenerator::generate_vertex_shader(
+                                &attrs_layout,
+                                &uniforms,
+                                &light_data,
+                            );
+                            println!("Generated vertex shader: {}", vert);
                             vert
                         };
 
@@ -422,10 +487,13 @@ impl ApplicationHandler<InterpreterEvent> for App {
                                 &uniforms,
                                 &light_data,
                             );
-                            //println!("Generated fragment shader: {}", frag);
+                            println!("Generated fragment shader: {}", frag);
                             frag
                         };
-                        shader_cache.write().unwrap().insert((vec_attrs_in, vec_attrs_out, uniform_keys), (vert.clone(), frag.clone()));
+                        shader_cache.write().unwrap().insert(
+                            (vec_attrs_in, vec_attrs_out, uniform_keys),
+                            (vert.clone(), frag.clone()),
+                        );
                         (vert, frag)
                     };
 
@@ -441,10 +509,34 @@ impl ApplicationHandler<InterpreterEvent> for App {
                             "triangles" => PrimitiveType::TrianglesList,
                             _ => PrimitiveType::TriangleStrip,
                         },
+                        light_names,
                     });
                 });
 
                 for packet in packets.write().unwrap().iter() {
+                    for name in &packet.light_names {
+                        if !self
+                            .shadow_textures_buffer
+                            .read()
+                            .unwrap()
+                            .iter()
+                            .any(|(name_, _)| name_ == name)
+                        {
+                            let tex = Box::leak(Box::new(
+                                DepthCubemap::empty(self.display.as_ref(), self.shadow_size)
+                                    .unwrap(),
+                            ))
+                            .sampled()
+                            .wrap_function(SamplerWrapFunction::Clamp)
+                            .minify_filter(MinifySamplerFilter::Nearest)
+                            .magnify_filter(MagnifySamplerFilter::Nearest);
+                            self.shadow_textures_buffer
+                                .write()
+                                .unwrap()
+                                .push((name.clone(), tex))
+                        }
+                    }
+
                     self.render_statement.push(RenderStatement {
                         vertex_shader: packet.vertex_shader.clone(),
                         fragment_shader: packet.fragment_shader.clone(),
@@ -456,6 +548,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         .unwrap(),
                         uniforms: packet.uniforms.clone(),
                         primitive_type: packet.primitive_type.clone(),
+                        light_names: packet.light_names.clone(),
                     });
                 }
             }
@@ -481,8 +574,93 @@ impl ApplicationHandler<InterpreterEvent> for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::RedrawRequested => {
+                let mut matrices = vec![];
+                let lights = self.lights.read().unwrap();
+                for (light_name, light_pos) in lights.iter() {
+                    let (_, shadow_texture) = self
+                        .shadow_textures_buffer
+                        .read()
+                        .unwrap()
+                        .iter()
+                        .find(|(name, _)| name == light_name)
+                        .unwrap()
+                        .clone();
+                    let proj = cgmath::perspective(Deg(45.0), 1.0, 0.1, 25.0); // Перспективная проекция для точечного света
+                    let dirs = [
+                        (Vector3::new(1.0, 0.0, 0.0), Vector3::new(0.0, -1.0, 0.0)), // +X
+                        (Vector3::new(-1.0, 0.0, 0.0), Vector3::new(0.0, -1.0, 0.0)), // -X
+                        (Vector3::new(0.0, 1.0, 0.0), Vector3::new(0.0, 0.0, 1.0)),  // +Y
+                        (Vector3::new(0.0, -1.0, 0.0), Vector3::new(0.0, 0.0, -1.0)), // -Y
+                        (Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, -1.0, 0.0)), // +Z
+                        (Vector3::new(0.0, 0.0, -1.0), Vector3::new(0.0, -1.0, 0.0)), // -Z
+                    ];
+
+                    for (i, (dir, up)) in dirs.iter().enumerate() {
+                        let view = Matrix4::look_at_rh(
+                            Point3::from(*light_pos),
+                            Point3::from(*light_pos) + *dir,
+                            *up,
+                        );
+                        let light_matrix: [[f32; 4]; 4] = (proj * view).into();
+
+                        matrices
+                            .push((format!("light_matrix_{}", light_name), light_matrix.clone()));
+
+                        let face = match i {
+                            0 => CubeLayer::PositiveX,
+                            1 => CubeLayer::NegativeX,
+                            2 => CubeLayer::PositiveY,
+                            3 => CubeLayer::NegativeY,
+                            4 => CubeLayer::PositiveZ,
+                            5 => CubeLayer::NegativeZ,
+                            _ => unreachable!(),
+                        };
+                        let depth_image = shadow_texture.0.main_level().image(face);
+                        let mut fbo =
+                            SimpleFrameBuffer::depth_only(self.display.as_ref(), depth_image)
+                                .unwrap();
+                        fbo.clear_depth(1.0);
+
+                        for stmt in &self.render_statement {
+                            let model_mat: &[[f32; 4]; 4] = stmt
+                                .uniforms
+                                .get("model")
+                                .and_then(|u| {
+                                    if let UniformValueWrapper::Mat4(m) = u {
+                                        Some(m)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .expect("model missing in RenderStatement");
+
+                            let shadow_uniforms = uniform! {
+                                model: *model_mat,
+                                light_matrix: light_matrix,
+                                u_far_plane: 25.0f32
+                            };
+                            fbo.draw(
+                                &stmt.vertex_buffer,
+                                &NoIndices(stmt.primitive_type),
+                                &self.shadow_program,
+                                &shadow_uniforms,
+                                &DrawParameters {
+                                    depth: Depth {
+                                        test: DepthTest::IfLess,
+                                        write: true,
+                                        ..Default::default()
+                                    },
+                                    ..Default::default()
+                                },
+                            )
+                            .unwrap();
+                        }
+                    }
+                }
+
                 let mut target = self.display.draw();
                 target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
+
                 let mut tex_ref_buffer = vec![];
                 for render_statement in &self.render_statement {
                     let mut uniforms = DynamicUniforms::new();
@@ -522,6 +700,28 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         }
                     }
 
+                    let mut shadow_map_names = vec![];
+
+                    for light_name in &render_statement.light_names {
+                        let (_, shadow_texture) = self
+                            .shadow_textures_buffer
+                            .read()
+                            .unwrap()
+                            .iter()
+                            .find(|(name, _)| name == light_name)
+                            .unwrap()
+                            .clone();
+                        shadow_map_names
+                            .push((format!("shadow_map_{}", light_name), shadow_texture));
+                    }
+                    for (light_name, shadow_texture) in &shadow_map_names {
+                        uniforms.add(&light_name, shadow_texture);
+                    }
+
+                    for (light_name, mat) in &matrices {
+                        uniforms.add(&light_name, mat);
+                    }
+
                     for (key, tex) in tex_ref_buffer.iter() {
                         uniforms.add(&key, self.tex_buffer.read().unwrap().get(*tex).unwrap().1);
                     }
@@ -540,10 +740,12 @@ impl ApplicationHandler<InterpreterEvent> for App {
                             ),
                             program,
                         );
-                        self.program_buffer.get(&(
-                            render_statement.vertex_shader.clone(),
-                            render_statement.fragment_shader.clone(),
-                        )).unwrap()
+                        self.program_buffer
+                            .get(&(
+                                render_statement.vertex_shader.clone(),
+                                render_statement.fragment_shader.clone(),
+                            ))
+                            .unwrap()
                     };
                     //println!("{}", self.program_buffer.len());
                     target
