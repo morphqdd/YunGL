@@ -1,0 +1,30 @@
+//minimal example
+while true {
+    render(
+        [
+            [
+                {
+                    attributes: {
+                        in: {
+                            position: "vec4"
+                        },
+                        out: {
+                            v_world_pos: "vec3"
+                        }
+                    },
+                    uniform: {
+                        color: { type: "vec3", value: [1, 0, 0] }
+                    }
+                },
+                {
+                    data: [
+                        { x: 0.6, y: 0.5 },
+                        { x: -0.2, y: -0.5 },
+                        { x: 0.5, y: -0.5 }
+                    ],
+                    layout: ["vec2"]
+                }
+            ]
+        ]
+    );
+}

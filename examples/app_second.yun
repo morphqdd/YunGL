@@ -1,0 +1,37 @@
+use "cube_second";
+use "camera";
+use "utils/projectionMatrix";
+use "plane_second";
+use "sphere_second";
+
+let t = 0;
+
+let camera = Camera([0, 0, 0], [0, 1, 0], [0, 0, 1], 0.3, 0.05);
+camera.regKeyMove();
+
+let light = { position: [2, 1, 1], color: [1,1,1]};
+let tex = image("C:\Users\xzer4\Downloads\photo_2025-04-14_21-00-58.jpg");
+
+
+let cube = Cube(camera, light);
+cube.translate([0, 2, 0]);
+
+let plane = Plane(camera, light);
+plane.setScale([30, 30, 30]);
+plane.rotate([90,0,0]);
+plane.translate([0,2,-1]);
+
+let sphere = Sphere(camera, light, 1, 8, 16);
+
+// Main render loop
+while true {
+    t = t + 0.01;
+    render([
+        [cube.pipeline, cube.vertices]
+        //[plane.pipeline, plane.vertices],
+        //[sphere.pipeline, sphere.vertices]
+    ]);
+    cube.update(t);
+    //plane.update(t);
+    //sphere.update(t);
+}

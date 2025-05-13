@@ -54,13 +54,12 @@ pub enum AppEvent {
 
 const SHADOW_VERTEX_SHADER: &str = r#"
     #version 330 core
-    uniform mat4 model;
     uniform mat4 light_matrix;
     uniform float u_far_plane;
     layout(location = 0) in vec4 position;
 
     void main() {
-        vec4 world_pos = model * position;
+        vec4 world_pos = position;
         vec4 ls = light_matrix * world_pos;
         float dist = length(ls.xyz);
         ls.z = dist;
@@ -91,11 +90,10 @@ pub struct App {
     vec_vertex_data: Arc<RwLock<Vec<(Vec<f32>, Vec<String>)>>>,
     vec_attrs: Arc<RwLock<Vec<Object>>>,
     vec_attrs_data: Arc<RwLock<Vec<AttributeLayouts>>>,
-    tex_buffer: Arc<RwLock<Vec<(Arc<DynamicImage>, &'static Texture2d)>>>,
+    tex_buffer: Vec<(Arc<DynamicImage>, &'static Texture2d)>,
     shader_cache: Arc<RwLock<HashMap<ShaderKey, (String, String)>>>,
-    lights: Arc<RwLock<HashMap<String, [f32; 3]>>>, // Имя света -> позиция
-    shadow_textures_buffer: Arc<RwLock<Vec<(String, Sampler<'static, DepthCubemap>)>>>, // Список теневых карт
-    light_name_to_index: HashMap<String, usize>, // Имя света -> индекс в shadow_textures
+    lights: Arc<RwLock<HashMap<String, [f32; 3]>>>,
+    shadow_textures_buffer: Arc<RwLock<Vec<(String, Sampler<'static, DepthCubemap>)>>>,
     shadow_program: Program,
     shadow_size: u32,
 }
@@ -148,12 +146,11 @@ impl App {
             vec_vertex_data: rc!(RwLock::new(Vec::<(Vec<f32>, Vec<String>)>::new())),
             vec_attrs: rc!(RwLock::new(Vec::new())),
             vec_attrs_data: rc!(RwLock::new(Vec::<AttributeLayouts>::new())),
-            tex_buffer: Arc::new(Default::default()),
+            tex_buffer: Default::default(),
             shader_cache: Arc::new(Default::default()),
             shadow_textures_buffer: Arc::new(Default::default()),
-            light_name_to_index: Default::default(),
             lights: Arc::new(Default::default()),
-            shadow_size: 1024,
+            shadow_size: 16,
         }
     }
 }
@@ -530,9 +527,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                             .wrap_function(SamplerWrapFunction::Clamp)
                             .minify_filter(MinifySamplerFilter::Nearest)
                             .magnify_filter(MagnifySamplerFilter::Nearest);
-                            self.shadow_textures_buffer
-                                .write()
-                                .unwrap()
+                            self.shadow_textures_buffer.write().unwrap()
                                 .push((name.clone(), tex))
                         }
                     }
@@ -574,97 +569,14 @@ impl ApplicationHandler<InterpreterEvent> for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::RedrawRequested => {
-                let mut matrices = vec![];
-                let lights = self.lights.read().unwrap();
-                for (light_name, light_pos) in lights.iter() {
-                    let (_, shadow_texture) = self
-                        .shadow_textures_buffer
-                        .read()
-                        .unwrap()
-                        .iter()
-                        .find(|(name, _)| name == light_name)
-                        .unwrap()
-                        .clone();
-                    let proj = cgmath::perspective(Deg(45.0), 1.0, 0.1, 25.0); // Перспективная проекция для точечного света
-                    let dirs = [
-                        (Vector3::new(1.0, 0.0, 0.0), Vector3::new(0.0, -1.0, 0.0)), // +X
-                        (Vector3::new(-1.0, 0.0, 0.0), Vector3::new(0.0, -1.0, 0.0)), // -X
-                        (Vector3::new(0.0, 1.0, 0.0), Vector3::new(0.0, 0.0, 1.0)),  // +Y
-                        (Vector3::new(0.0, -1.0, 0.0), Vector3::new(0.0, 0.0, -1.0)), // -Y
-                        (Vector3::new(0.0, 0.0, 1.0), Vector3::new(0.0, -1.0, 0.0)), // +Z
-                        (Vector3::new(0.0, 0.0, -1.0), Vector3::new(0.0, -1.0, 0.0)), // -Z
-                    ];
-
-                    for (i, (dir, up)) in dirs.iter().enumerate() {
-                        let view = Matrix4::look_at_rh(
-                            Point3::from(*light_pos),
-                            Point3::from(*light_pos) + *dir,
-                            *up,
-                        );
-                        let light_matrix: [[f32; 4]; 4] = (proj * view).into();
-
-                        matrices
-                            .push((format!("light_matrix_{}", light_name), light_matrix.clone()));
-
-                        let face = match i {
-                            0 => CubeLayer::PositiveX,
-                            1 => CubeLayer::NegativeX,
-                            2 => CubeLayer::PositiveY,
-                            3 => CubeLayer::NegativeY,
-                            4 => CubeLayer::PositiveZ,
-                            5 => CubeLayer::NegativeZ,
-                            _ => unreachable!(),
-                        };
-                        let depth_image = shadow_texture.0.main_level().image(face);
-                        let mut fbo =
-                            SimpleFrameBuffer::depth_only(self.display.as_ref(), depth_image)
-                                .unwrap();
-                        fbo.clear_depth(1.0);
-
-                        for stmt in &self.render_statement {
-                            let model_mat: &[[f32; 4]; 4] = stmt
-                                .uniforms
-                                .get("model")
-                                .and_then(|u| {
-                                    if let UniformValueWrapper::Mat4(m) = u {
-                                        Some(m)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .expect("model missing in RenderStatement");
-
-                            let shadow_uniforms = uniform! {
-                                model: *model_mat,
-                                light_matrix: light_matrix,
-                                u_far_plane: 25.0f32
-                            };
-                            fbo.draw(
-                                &stmt.vertex_buffer,
-                                &NoIndices(stmt.primitive_type),
-                                &self.shadow_program,
-                                &shadow_uniforms,
-                                &DrawParameters {
-                                    depth: Depth {
-                                        test: DepthTest::IfLess,
-                                        write: true,
-                                        ..Default::default()
-                                    },
-                                    ..Default::default()
-                                },
-                            )
-                            .unwrap();
-                        }
-                    }
-                }
-
                 let mut target = self.display.draw();
+                let mut tex_ref_buffer = vec![];
                 target.clear_color_and_depth((0.0, 0.0, 0.0, 1.0), 1.0);
 
-                let mut tex_ref_buffer = vec![];
-                for render_statement in &self.render_statement {
+
+                for stmt in &self.render_statement {
                     let mut uniforms = DynamicUniforms::new();
-                    for (key, uniform) in &render_statement.uniforms {
+                    for (key, uniform) in &stmt.uniforms {
                         match uniform {
                             UniformValueWrapper::Float(num) => uniforms.add(&key, num),
                             UniformValueWrapper::Vec3(vec) => uniforms.add(&key, vec),
@@ -672,8 +584,6 @@ impl ApplicationHandler<InterpreterEvent> for App {
                             UniformValueWrapper::Sampler2D(img) => {
                                 if let Some((i, (_, _))) = self
                                     .tex_buffer
-                                    .read()
-                                    .unwrap()
                                     .iter()
                                     .enumerate()
                                     .find(|(_, (image_, _))| image_.eq(img))
@@ -686,14 +596,12 @@ impl ApplicationHandler<InterpreterEvent> for App {
                                         self.display.as_ref(),
                                         RawImage2d::from_raw_rgb(image.into_raw(), dimensions),
                                     )
-                                    .unwrap();
+                                        .unwrap();
                                     self.tex_buffer
-                                        .write()
-                                        .unwrap()
                                         .push((img.clone(), Box::leak(Box::new(tex))));
                                     tex_ref_buffer.push((
                                         key.clone(),
-                                        self.tex_buffer.read().unwrap().len() - 1,
+                                        self.tex_buffer.len() - 1,
                                     ));
                                 }
                             }
@@ -702,11 +610,9 @@ impl ApplicationHandler<InterpreterEvent> for App {
 
                     let mut shadow_map_names = vec![];
 
-                    for light_name in &render_statement.light_names {
+                    for light_name in &stmt.light_names {
                         let (_, shadow_texture) = self
-                            .shadow_textures_buffer
-                            .read()
-                            .unwrap()
+                            .shadow_textures_buffer.read().unwrap()
                             .iter()
                             .find(|(name, _)| name == light_name)
                             .unwrap()
@@ -718,40 +624,36 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         uniforms.add(&light_name, shadow_texture);
                     }
 
-                    for (light_name, mat) in &matrices {
-                        uniforms.add(&light_name, mat);
-                    }
-
                     for (key, tex) in tex_ref_buffer.iter() {
-                        uniforms.add(&key, self.tex_buffer.read().unwrap().get(*tex).unwrap().1);
+                        uniforms.add(&key, self.tex_buffer.get(*tex).unwrap().1);
                     }
 
                     let program = if let Some(program) = self.program_buffer.get(&(
-                        render_statement.vertex_shader.clone(),
-                        render_statement.fragment_shader.clone(),
+                        stmt.vertex_shader.clone(),
+                        stmt.fragment_shader.clone(),
                     )) {
                         program
                     } else {
-                        let program = render_statement.build_program(&self.display).unwrap();
+                        let program = stmt.build_program(&self.display).unwrap();
                         self.program_buffer.insert(
                             (
-                                render_statement.vertex_shader.clone(),
-                                render_statement.fragment_shader.clone(),
+                                stmt.vertex_shader.clone(),
+                                stmt.fragment_shader.clone(),
                             ),
                             program,
                         );
                         self.program_buffer
                             .get(&(
-                                render_statement.vertex_shader.clone(),
-                                render_statement.fragment_shader.clone(),
+                                stmt.vertex_shader.clone(),
+                                stmt.fragment_shader.clone(),
                             ))
                             .unwrap()
                     };
                     //println!("{}", self.program_buffer.len());
                     target
                         .draw(
-                            &render_statement.vertex_buffer,
-                            &NoIndices(render_statement.primitive_type),
+                            &stmt.vertex_buffer,
+                            &NoIndices(stmt.primitive_type),
                             program,
                             &uniforms,
                             &DrawParameters {
@@ -765,6 +667,7 @@ impl ApplicationHandler<InterpreterEvent> for App {
                         )
                         .unwrap();
                 }
+
                 self.render_statement.clear();
                 target.finish().unwrap();
             }

@@ -1,0 +1,60 @@
+use "utils/iter";
+use "camera";
+
+export class Scene {
+    init(options) {
+        self.meshes = [];
+        self.actions = [];
+        let camera = options.sceneCamera;
+
+        self.camera = Camera(
+            camera.position,
+            camera.lookAt,
+            camera.up,
+            camera.speed,
+            camera.rotationSpeed
+        );
+        self.lights = options.sceneLights;
+        let dimensions = getWindowDimensions();
+        self.projection = projectionMatrix(dimensions.width, dimensions.height);
+    }
+
+    getCamera() {
+        return self.camera();
+    }
+
+    addMesh(mesh) {
+        mesh.setCamera(self.camera);
+        mesh.setLights(self.lights);
+        mesh.setProjection(self.projection);
+        self.meshes + mesh;
+    }
+
+    addAction(mesh, func) {
+        self.actions + [mesh, func];
+    }
+
+    renderScene() {
+        let dt = 0;
+        self.camera.regKeyMove();
+        self.render = map(
+            self.meshes,
+            fun (elm) {
+                return [elm.pipeline, elm.vertices];
+            }
+        );
+
+        while true {
+            dt = dt + 0.01;
+            render(self.render);
+
+            for (let i = 0; self.meshes[i] != nil; i = i + 1) {
+                let elm = self.meshes[i];
+                elm.update(dt);
+                if self.actions[i] != nil {
+                    self.actions[i][1](elm, dt);
+                }
+            }
+        }
+    }
+}

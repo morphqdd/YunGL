@@ -1,0 +1,137 @@
+use "utils/viewMatrix";
+use "utils/projectionMatrix";
+use "utils/iter";
+
+export class Plane {
+    init(camera, light) {
+        let dimensions   = getWindowDimensions();
+        let projectionM  = projectionMatrix(dimensions.width, dimensions.height);
+
+        self.camera = camera;
+        self.position = [0, 0, 0];
+        self.rotation = [0,0,0];
+        self.scale = [1,1,1];
+        let frag = "
+        #version 330 core
+        in vec3 frag_to_light_1;
+        uniform samplerCube shadow_map_1;
+        out vec4 out_color;
+
+        void main() {
+
+            float d = texture(shadow_map_1, frag_to_light_1).r;
+            out_color = vec4(vec3(d), 1.0);
+        }
+        ";
+        self.pipeline = {
+            //fragment: frag,
+            attributes: {
+                in: {
+                    position: "vec4",
+                    normal:   "vec3"
+                },
+                out: {
+                    v_normal: "vec3",
+                    v_position: "vec3",
+                    v_world_pos: "vec3",
+                    v_world_normal: "vec3"
+                }
+            },
+            lights: {
+                1: light
+            },
+            uniform: {
+                model:           { type: "mat4",    value: self._makeModel() },
+                view:            { type: "mat4",    value: camera.getViewMatrix() },
+                projection:      { type: "mat4",    value: projectionM },
+                color:           { type: "vec3",    value: [1, 1, 1] },
+                u_view_pos:      { type: "vec3",    value: camera.position },
+                specular_strength: { type: "float", value: 0 },
+                shininess:       { type: "float",   value: 0 }
+            },
+            primitive: "triangles"
+        };
+
+
+        self.vertices = {
+            data: [
+
+                { x:-0.5, y:0, z:-0.5, nx:0, ny:-1, nz:0 },
+                { x: 0.5, y:0, z:-0.5, nx:0, ny:-1, nz:0 },
+                { x: 0.5, y:0, z: 0.5, nx:0, ny:-1, nz:0 },
+
+                { x:-0.5, y:0, z:-0.5, nx:0, ny:-1, nz:0},
+                { x: 0.5, y:0, z: 0.5, nx:0, ny:-1, nz:0 },
+                { x:-0.5, y:0, z: 0.5, nx:0, ny:-1, nz:0 }
+            ],
+            layout: ["vec3", "normal"]
+        };
+    }
+
+    _makeModel() {
+        let T = self.position;
+        let R = map(self.rotation, fun(elm) { return rad(elm); });
+        let S = self.scale;
+
+        let translation = [
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [T[0], T[1], T[2], 1]
+        ];
+
+        let scale = [
+            [S[0], 0, 0, 0],
+            [0, S[1], 0, 0],
+            [0, 0, S[2], 0],
+            [0, 0, 0, 1]
+        ];
+
+        let rx = [
+            [1, 0, 0, 0],
+            [0, cos(R[0]), -sin(R[0]), 0],
+            [0, sin(R[0]), cos(R[0]),0],
+            [0, 0, 0, 1]
+        ];
+
+        let ry = [
+            [cos(R[1]), sin(R[1]), 0, 0],
+            [0, 1, 0, 0],
+            [-sin(R[1]), 0, cos(R[0]),0],
+            [0, 0, 0, 1]
+        ];
+
+        let rz = [
+            [cos(R[0]), -sin(R[0]), 0, 0],
+            [sin(R[0]), cos(R[0]), 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ];
+
+        let rotation = mulMat4(mulMat4(rx, ry), rz);
+        return mulMat4(mulMat4(scale, rotation ), translation);
+    }
+
+    update(dt) {
+
+        self.pipeline.uniform.view.value = self.camera.getViewMatrix();
+        self.pipeline.uniform.projection.value = projectionMatrix(
+            getWindowDimensions().width,
+            getWindowDimensions().height
+        );
+        self.pipeline.uniform.u_view_pos.value = self.camera.position;
+        self.pipeline.uniform.model.value = self._makeModel();
+    }
+
+    translate(coord) {
+        self.position = coord;
+    }
+
+    rotate(rotation) {
+        self.rotation = rotation;
+    }
+
+    setScale(vScale) {
+        self.scale = vScale;
+    }
+}

@@ -3,13 +3,13 @@ use "utils/math";
 
 export class Camera {
     init(position, target, up, speed, rotationSpeed) {
-        self.position      = position;
-        self.direction     = normalize(subtract(target, position));
-        self.up            = normalize(up);
-        self.worldUp       = normalize(up);
-        self.speed         = speed;
+        self.position = position;
+        self.direction = normalize(subtract(target, position));
+        self.up = normalize(up);
+        self.worldUp = normalize(up);
+        self.speed = speed;
         self.rotationSpeed = rotationSpeed;
-        self.viewMatrix    = viewMatrix(self.position, add(self.position, self.direction), self.up);
+        self.viewMatrix = viewMatrix(self.position, add(self.position, self.direction), self.up);
     }
 
     updateViewMatrix() {
@@ -51,30 +51,30 @@ export class Camera {
     yawLeft() {
         let rot = rotationMatrix(self.worldUp, self.rotationSpeed);
         self.direction = normalize(transformVector(rot, self.direction));
-        self.up        = normalize(transformVector(rot, self.up));
+        self.up = normalize(transformVector(rot, self.up));
         self.updateViewMatrix();
     }
 
     yawRight() {
         let rot = rotationMatrix(self.worldUp, -self.rotationSpeed);
         self.direction = normalize(transformVector(rot, self.direction));
-        self.up        = normalize(transformVector(rot, self.up));
+        self.up = normalize(transformVector(rot, self.up));
         self.updateViewMatrix();
     }
 
     pitchUp() {
         let right = normalize(cross(self.direction, self.up));
-        let rot   = rotationMatrix(right, self.rotationSpeed);
+        let rot = rotationMatrix(right, self.rotationSpeed);
         self.direction = normalize(transformVector(rot, self.direction));
-        self.up        = normalize(transformVector(rot, self.up));
+        self.up = normalize(transformVector(rot, self.up));
         self.updateViewMatrix();
     }
 
     pitchDown() {
         let right = normalize(cross(self.direction, self.up));
-        let rot   = rotationMatrix(right, -self.rotationSpeed);
+        let rot = rotationMatrix(right, -self.rotationSpeed);
         self.direction = normalize(transformVector(rot, self.direction));
-        self.up        = normalize(transformVector(rot, self.up));
+        self.up = normalize(transformVector(rot, self.up));
         self.updateViewMatrix();
     }
 
@@ -83,15 +83,15 @@ export class Camera {
     }
 
     regKeyMove() {
-        regKeyEvent("w", fun() { camera.moveForward(); });
-        regKeyEvent("s", fun() { camera.moveBackward(); });
-        regKeyEvent("a", fun() { camera.strafeLeft(); });
-        regKeyEvent("d", fun() { camera.strafeRight(); });
-        regKeyEvent("q", fun() { camera.moveUp(); });
-        regKeyEvent("e", fun() { camera.moveDown(); });
-        regKeyEvent("j", fun() { camera.yawLeft(); });
-        regKeyEvent("l", fun() { camera.yawRight(); });
-        regKeyEvent("i", fun() { camera.pitchUp(); });
-        regKeyEvent("k", fun() { camera.pitchDown(); });
+        regKeyEvent("w", fun() { self.moveForward(); });
+        regKeyEvent("s", fun() { self.moveBackward(); });
+        regKeyEvent("a", fun() { self.strafeLeft(); });
+        regKeyEvent("d", fun() { self.strafeRight(); });
+        regKeyEvent("q", fun() { self.moveUp(); });
+        regKeyEvent("e", fun() { self.moveDown(); });
+        regKeyEvent("j", fun() { self.yawLeft(); });
+        regKeyEvent("l", fun() { self.yawRight(); });
+        regKeyEvent("i", fun() { self.pitchUp(); });
+        regKeyEvent("k", fun() { self.pitchDown(); });
     }
 }

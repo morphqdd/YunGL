@@ -2,44 +2,6 @@ use crate::interpreter::render_statement::pipeline_data::AttributeLayouts;
 use crate::interpreter::render_statement::uniform_generator::UniformValueWrapper;
 use std::collections::HashMap;
 
-const SHADOW_CALCULATING: &str = r#"
-vec3 grid_sample_offset(int index, float scale) {
-    // 20 направлений по полусфере (фиксированные, можно улучшить с noise/blue-noise)
-    const vec3 sample_offset_directions[20] = vec3[](
-        vec3(1, 1, 1), vec3(-1, 1, 1), vec3(1, -1, 1), vec3(-1, -1, 1),
-        vec3(1, 1, -1), vec3(-1, 1, -1), vec3(1, -1, -1), vec3(-1, -1, -1),
-        vec3(1, 0, 0), vec3(-1, 0, 0), vec3(0, 1, 0), vec3(0, -1, 0),
-        vec3(0, 0, 1), vec3(0, 0, -1),
-        vec3(1, 1, 0), vec3(-1, 1, 0), vec3(1, -1, 0), vec3(-1, -1, 0),
-        vec3(0, 1, 1), vec3(0, -1, -1)
-    );
-    return normalize(sample_offset_directions[index]) * scale;
-}
-float calculate_shadow(vec3 frag_to_light, vec3 light_pos, samplerCube shadow_map, float u_far_plane)
-{
-    float current_depth = length(frag_to_light);
-
-    // Сглаживание теней: радиус окрестности в world-space
-    float shadow = 0.0;
-    float bias = 0.015; // можно адаптировать под сцену
-    int samples = 20;   // количество сэмплов
-    float offset = 0.1; // шаг вокруг направления
-
-    for (int i = 0; i < samples; ++i) {
-        // Отклоняем направление для PCF
-        vec3 sample_dir = frag_to_light + grid_sample_offset(i, offset);
-        float closest_depth = texture(shadow_map, sample_dir).r * u_far_plane;
-
-        if (current_depth - bias > closest_depth)
-            shadow += 1.0;
-    }
-
-    shadow /= float(samples);
-    return shadow;
-}
-
-"#;
-
 pub struct ShaderGenerator;
 
 impl ShaderGenerator {
@@ -50,7 +12,6 @@ impl ShaderGenerator {
     ) -> String {
         let mut shader = String::from("#version 330 core\n");
 
-        // Генерируем атрибуты
         for (name, attr_type) in &attributes.inputs {
             shader.push_str(&format!("in {} {};\n", attr_type, name));
         }
@@ -66,11 +27,9 @@ impl ShaderGenerator {
         }
 
         for (name, pos, color) in light_data.iter() {
-            shader.push_str(&format!("out vec3 frag_to_light_{};\n", name));
             shader.push_str(&format!("uniform vec3 {};\n", pos));
         }
 
-        // Основная функция
         shader.push_str("void main() {\n");
         let position_type = String::from("vec4");
         let position_type = attributes.inputs.get("position").unwrap_or(&position_type);
@@ -78,12 +37,6 @@ impl ShaderGenerator {
         if uniforms.contains_key("model") && attributes.inputs.contains_key("position") {
             shader.push_str("   vec4 world_pos = model * position;\n");
             shader.push_str("   v_world_pos = world_pos.xyz;\n");
-        }
-
-        for (name, pos, _) in light_data.iter() {
-            shader.push_str(&format!(
-                "  frag_to_light_{name} = world_pos.xyz - {pos};\n"
-            ));
         }
 
         if attributes.inputs.contains_key("normal")
@@ -166,9 +119,6 @@ impl ShaderGenerator {
 
         shader.push_str("out vec4 out_color;\n");
 
-        shader.push_str(&format!("{}\n", SHADOW_CALCULATING));
-
-        shader.push_str("void main() {\n");
 
         let has_light_pos = uniforms.keys().any(|name| name.contains("u_light"));
         let has_light_color = uniforms.keys().any(|name| name.contains("u_light_color"));
@@ -178,6 +128,9 @@ impl ShaderGenerator {
         let has_shininess = uniforms.keys().any(|name| name.contains("shininess"));
         let has_view_pos = uniforms.keys().any(|name| name.contains("u_view_pos"));
         let has_color = uniforms.keys().any(|name| name.as_str() == "color");
+
+
+        shader.push_str("void main() {\n");
 
         let mut final_color = String::from("    vec3 final_color = ");
         let mut f_color = String::new();
@@ -215,9 +168,8 @@ impl ShaderGenerator {
                 shader.push_str(&format!(
                     "  vec3 rim_{name} = 0.2 * pow(rim_factor, 2.0) * {color};\n"
                 ));
-                shader.push_str(&format!("   float shadow_{name} = calculate_shadow(frag_to_light_{name}, u_light_{name}, shadow_map_{name}, 25.0);\n"));
                 f_color += &format!(
-                    "(ambient_{name} + (1.0 - shadow_{name}) * (diffuse_{name} + specular_{name}) + rim_{name})"
+                    "(ambient_{name} + (diffuse_{name} + specular_{name}) + rim_{name})"
                 );
                 if light_data.len() - 1 != i {
                     f_color += "+"

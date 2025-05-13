@@ -1,31 +1,40 @@
 use "cube";
-use "camera";
-use "utils/projectionMatrix";
 use "plane";
+use "scene";
+use "sphere";
 
-let t = 0;
+let light = { position: [1, -20, 0.5], color: [1,1,1]};
 
-let camera = Camera([0, 0, 0], [0, 1, 0], [0, 0, 1], 0.3, 0.05);
-camera.regKeyMove();
+let scene = Scene(
+    {
+        sceneCamera: {
+            position: [0, 0, 0],
+            lookAt: [0, 1, 0],
+            up: [0, 0, 1],
+            speed: 0.3,
+            rotationSpeed: 0.05
+        },
+        sceneLights: {
+            light1: light
+        }
+    }
+);
 
-let light = { position: [2, 20, 0.5], color: [1,1,1]};
-let objs = [];
-let render_ = [];
-let tex = image("C:\Users\xzer4\Downloads\photo_2025-04-14_21-00-58.jpg");
+let cube = Cube();
+cube.setPosition([0, 2, 0]);
+scene.addMesh(cube);
+scene.addAction(cube, fun(mesh, dt) {
+    mesh.setPosition([0, 0, sin(dt*2)]);
+});
 
-let cube = Cube(camera, light);
-cube.translate([0, 2, 0]);
-let plane = Plane(camera, light);
+let plane = Plane();
 plane.setScale([30, 30, 30]);
-plane.rotate([90,0,0]);
-plane.translate([0,2,-1]);
-// Main render loop
-while true {
-    t = t + 0.01;
-    render([
-        [cube.pipeline, cube.vertices],
-        [plane.pipeline, plane.vertices]
-    ]);
-    cube.update(t);
-    plane.update(t);
-}
+plane.setRotation([90,0,0]);
+plane.setPosition([0,2,-1]);
+scene.addMesh(plane);
+
+let sphere = Sphere(1, 8, 16);
+sphere.setPosition([3, 3, 0]);
+scene.addMesh(sphere);
+
+scene.renderScene();
